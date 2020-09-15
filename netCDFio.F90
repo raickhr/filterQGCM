@@ -1,17 +1,34 @@
 module netCDFio
+    use kinds
+    use gridMod
+    use fields
+    use ncdf_wrapper
     implicit none
     
     contains
 
-    subroutine read_PscalarField2D(inputpath,filename,var_name,k_level)
+    subroutine readInputOcnVars2D_P(inputpath, &
+                              filename, & 
+                              k_level, &
+                              recDim_count)
 
         character(len=*), intent(in) :: inputpath,filename
-        character(len=*), intent(in) :: var_name(:)
-        integer, intent(in) :: k_level
+        integer, intent(in) :: k_level, recDim_count
 
-        character(len=128):: path_n_file
-        integer:: num_of_var, var_counter, var_id, file_id, field_id, ierr, endcount(4),startcount(4)
-        real(kind =r8) :: field2D(imt,jmt)
+        character(len=char_len):: path_n_file
+
+        CHARACTER(len=char_len_short) :: varName, &
+                                         longName, &
+                                         units
+        
+        integer(kind=i4):: num_of_var, &
+                  var_counter, &
+                  var_id, file_id, field_id, &
+                  ierr, &
+                  endcount(4), &
+                  startcount(4)
+
+        real(kind =r8) :: tempField2D(nxpo,nypo)
 
         path_n_file = trim(adjustl(inputpath))//'/'//trim(adjustl(filename))
 
@@ -24,33 +41,39 @@ module netCDFio
         print *,''
         print *, 'Opened  ', path_n_file
 
-        num_of_var = size(var_name)
+        num_of_var = size(input2DOcnFields)
 
         do var_counter = 1,num_of_var
-
+            varName = trim(adjustl(input2DOcnFields(var_counter)%info%fieldName))
             print *,''
-            print *, 'Trying to 2D field  ', var_name(var_counter), 'at k-level', k_level
+            print *, 'Trying to 2D field  ', , 'at k-level', k_level
 
 
-            ierr = nf_inq_varid(file_id,trim(var_name(var_counter)),var_id)
+            ierr = nf_inq_varid(file_id,trim(adjustl(varName)),var_id)
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_inq_varid')
 
-            print *, 'VAR ID for ', var_name(var_counter), 'is  ', var_id
+            print *, 'VAR ID for ', varName, 'is  ', var_id
 
-            startcount = (/1, 1, k_level, 1/)
-            endcount = (/ imt, jmt, 1 , 1/)
+            startcount = (/1, 1, k_level, recDim_count/)
+            endcount = (/nxpo, nypo, 1 , 1/)
 
+            ierr = NF_GET_ATT_TEXT (file_id, var_id, 'long_name', longName)
+            if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_att')
+            input2DOcnFields(var_counter)%info%longName = longName
 
-            ierr = nf_get_vara_real(file_id,var_id,startcount,endcount,field2D)
+            ierr = NF_GET_ATT_TEXT (file_id, var_id, 'units', units)
+            if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_att')
+            input2DOcnFields(var_counter)%info%longName = longName
+
+            ierr = nf_get_vara_real(file_id,var_id,startcount,endcount,tempField2D)
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_field')
 
             print *, 'Field Obtained'
 
-            inputFields2D(var_counter)%info%fieldName = trim(adjustl(var_name(var_counter)))
-            inputFields2D(var_counter)%fieldVal(:,:) = field2D(:,:)
+            input2DOcnFields(var_counter)%fieldVal(:,:) = tempField2D(:,:)
 
             print *, ''
-            print *, var_name(var_counter), 'read SUCCESS'
+            print *, varName, 'read SUCCESS'
 
         end do
 
