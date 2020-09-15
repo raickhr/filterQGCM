@@ -1,0 +1,36 @@
+&paths
+inputLoc='/testInDir/'
+outputLoc='/testOutDir/'
+/
+
+&gridFile
+gridFileName='grid.nc'
+/
+
+&ocngridsize
+nxto_c = 960
+nyto_c = 960 
+nzo_c = 3
+/
+
+&atmgridsize
+nxta_c = 1044
+nyta_c = 1044
+nza_c = 3
+/
+
+&for_allocation
+nInputFiles=2
+nVars2read=2
+nFilterLength=2
+/
+
+&fileName_VarName
+inputFileList="file1.nc","file2.nc"
+varNameList="var1","var2"
+/
+
+&filterLenList
+filterLengthList = 100, 200
+/
+
