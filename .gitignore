@@ -1,4 +1,3 @@
 *.mod
 *.o
-test/inputDir/*.nc
-test/outputDir/*.nc
+/test/*
