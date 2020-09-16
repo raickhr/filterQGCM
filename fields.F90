@@ -30,5 +30,23 @@ module fields
         enddo
     end subroutine
 
+    subroutine init_outputOcnFields()
+        INTEGER(kind=i4):: i, nOutputFields
+        nOutputFields = 7
+        allocate(output2DOcnFields(nOutputFields))
+
+        output2DOcnFields(1)%info%fieldName = 'UVEL'
+        output2DOcnFields(2)%info%fieldName = 'VVEL'
+        output2DOcnFields(3)%info%fieldName = 'TAUX'
+        output2DOcnFields(4)%info%fieldName = 'TAUY'
+        output2DOcnFields(5)%info%fieldName = 'TotalPowerPerArea'
+        output2DOcnFields(6)%info%fieldName = 'MeanPowerPerArea'
+        output2DOcnFields(6)%info%fieldName = 'EddyPowerPerArea'
+        
+        do i=1, nVars2read
+            allocate(output2DOcnFields(i)%fieldVal(nxpo,nypo))
+        enddo
+    end subroutine
+
 end module
 

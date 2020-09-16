@@ -30,30 +30,24 @@ module netCDFio
 
         real(kind =r8) :: tempField2D(nxpo,nypo)
 
-        path_n_file = trim(adjustl(inputpath))//'/'//trim(adjustl(filename))
+        path_n_file = trim(adjustl(inputpath))//trim(adjustl(filename))
 
         print *,''
-        print *, 'Opening file  ', path_n_file, ' ... '
+        print *, 'Opening file  ', trim(path_n_file), ' ... '
 
         ierr = nf_open (trim(path_n_file), nf_nowrite, file_id)
         if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_open')
 
         print *,''
-        print *, 'Opened  ', path_n_file
+        print *, 'Opened  ', trim(path_n_file)
 
         num_of_var = size(input2DOcnFields)
 
         do var_counter = 1,num_of_var
             varName = trim(adjustl(input2DOcnFields(var_counter)%info%fieldName))
-            print *,''
-            print *, 'Trying to read 2D field  ', varName, 'at k-level', k_level
-
-
             ierr = nf_inq_varid(file_id,trim(adjustl(varName)),var_id)
+
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_inq_varid')
-
-            print *, 'VAR ID for ', varName, 'is  ', var_id
-
             startcount = (/1, 1, k_level, recDim_count/)
             endcount = (/nxpo, nypo, 1 , 1/)
 
@@ -68,17 +62,18 @@ module netCDFio
             ierr = nf_get_vara_real(file_id,var_id,startcount,endcount,tempField2D)
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_field')
 
-            print *, 'Field Obtained'
-
             input2DOcnFields(var_counter)%fieldVal(:,:) = tempField2D(:,:)
 
-            print *, ''
-            print *, varName, 'read SUCCESS'
+            WRITE(*,'(A,A)')  '  Variable name :',trim(varName)
+            WRITE(*,'(A,A)')  '  Long name     :',trim(longName)
+            WRITE(*,'(A,A)')  '  Units         :',trim(units)
+            WRITE(*,'(A,I3)') '  Variable id   :',var_id
+            print *,''
 
         end do
 
         print *,''
-        print *, 'Closing file  ', path_n_file, ' ... '
+        print *, 'Closing file  ', trim(path_n_file), ' ... '
 
         ierr = nf_close(file_id)
         

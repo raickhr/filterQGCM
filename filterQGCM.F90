@@ -12,6 +12,7 @@ program filterQGCM
 
     call makeConfig() !!! Reads the i/o location and variables to read 
     call init_grid()
+    call init_inputOcnFields()
 
     !!! loop over record dimnesion for a file
     nRecs = 1

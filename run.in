@@ -20,14 +20,14 @@ nza_c = 3
 /
 
 &for_allocation
-nInputFiles=2
-nVars2read=2
+nInputFiles=1
+nVars2read=3
 nFilterLength=2
 /
 
 &fileName_VarName
-inputFileList="file1.nc","file2.nc"
-varNameList="var1","var2"
+inputFileList="ocpo.nc"
+varNameList="p","taux","tauy"
 /
 
 &filterLenList
