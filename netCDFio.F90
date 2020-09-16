@@ -46,7 +46,7 @@ module netCDFio
         do var_counter = 1,num_of_var
             varName = trim(adjustl(input2DOcnFields(var_counter)%info%fieldName))
             print *,''
-            print *, 'Trying to 2D field  ', , 'at k-level', k_level
+            print *, 'Trying to read 2D field  ', varName, 'at k-level', k_level
 
 
             ierr = nf_inq_varid(file_id,trim(adjustl(varName)),var_id)
