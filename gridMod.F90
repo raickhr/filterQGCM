@@ -59,6 +59,19 @@ module gridMod
         nypa = nyta+1
         nzia = nza-1
 
+        allocate(xpo(nxpo),  & 
+                 ypo(nypo),  &
+                 xto(nxto),  &
+                 yto(nyto),  &
+                 zo(nzo),    &  
+                 zio(nzio),  &
+                 xpa(nxpa),  &
+                 ypa(nypa),  &
+                 xta(nxta),  &
+                 yta(nyta),  &
+                 za(nza),    &  
+                 zia(nzia))
+
     end subroutine
 
 

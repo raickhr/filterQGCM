@@ -1,6 +1,6 @@
 &paths
 inputLoc='test/inputDir/'
-outputLoc='test/outpDir/'
+outputLoc='test/outputDir/'
 /
 
 &gridFile

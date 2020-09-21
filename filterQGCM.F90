@@ -1,5 +1,5 @@
 program filterQGCM
-    !use fields
+    use fields
     use configMod
     !use mpiMod
     use netCDFio
@@ -13,6 +13,8 @@ program filterQGCM
     call makeConfig() !!! Reads the i/o location and variables to read 
     call init_grid()
     call init_inputOcnFields()
+    call init_outputOcnFields()
+
 
     !!! loop over record dimnesion for a file
     nRecs = 1
@@ -21,6 +23,9 @@ program filterQGCM
                               inputFileList(1), & 
                               1, &
                               recDim)
+
+        call writeOcnOutPut_Pfields(outputLoc, &
+                                    'testOutput.nc')
     enddo
 
 end program filterQGCM

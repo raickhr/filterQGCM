@@ -18,6 +18,8 @@ module fields
 
     type(field2D), ALLOCATABLE, DIMENSION(:):: input2DOcnFields
     type(field2D), ALLOCATABLE, DIMENSION(:):: output2DOcnFields
+    REAL(kind=r8) :: timeVal
+    CHARACTER(len = char_len_short) :: timeUnits 
 
     contains
 
@@ -36,12 +38,32 @@ module fields
         allocate(output2DOcnFields(nOutputFields))
 
         output2DOcnFields(1)%info%fieldName = 'UVEL'
+        output2DOcnFields(1)%info%longName = 'filtered zonal velocity'
+        output2DOcnFields(1)%info%units = 'm/s'
+
         output2DOcnFields(2)%info%fieldName = 'VVEL'
+        output2DOcnFields(2)%info%longName = 'filtered meridional velocity'
+        output2DOcnFields(2)%info%units = 'm/s'
+
         output2DOcnFields(3)%info%fieldName = 'TAUX'
+        output2DOcnFields(3)%info%longName = 'filtered zonal surface wind stress'
+        output2DOcnFields(3)%info%units = 'Pascal'
+
         output2DOcnFields(4)%info%fieldName = 'TAUY'
+        output2DOcnFields(4)%info%longName = 'filtered meriodional surface wind stress'
+        output2DOcnFields(4)%info%units = 'Pascal'
+
         output2DOcnFields(5)%info%fieldName = 'TotalPowerPerArea'
+        output2DOcnFields(5)%info%longName = '\overline{\tau . u}'
+        output2DOcnFields(5)%info%units = 'Watt/m^2'
+
         output2DOcnFields(6)%info%fieldName = 'MeanPowerPerArea'
-        output2DOcnFields(6)%info%fieldName = 'EddyPowerPerArea'
+        output2DOcnFields(6)%info%longName = '\overline{\tau} . \overline{u}'
+        output2DOcnFields(6)%info%units = 'Watt/m^2'
+
+        output2DOcnFields(7)%info%fieldName = 'EddyPowerPerArea'
+        output2DOcnFields(7)%info%longName = '\overline{\tau . u} - \overline{\tau} . \overline{u}'
+        output2DOcnFields(7)%info%units = 'Watt/m^2'
         
         do i=1, nVars2read
             allocate(output2DOcnFields(i)%fieldVal(nxpo,nypo))
