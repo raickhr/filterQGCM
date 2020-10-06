@@ -2,7 +2,7 @@ module kinds
 ! !REFDOC:
 !  This module is supplied to provide consistent data representation
 !  across machine architectures.  It is meant to replace the old
-!  Fortran double precision and real *X declarations that were
+!  Fortran REAL(kind=r8) and real *X declarations that were
 !  implementation-specific.
 !  Users should not need to adjust anything in this module.  If various
 !  character strings like long paths to files exceed the default
@@ -26,7 +26,7 @@ module kinds
     i4               = selected_int_kind(6)   ,&
     i8               = selected_int_kind(13)  ,&
     r4               = selected_real_kind(6)  ,&
-    r8               = selected_real_kind(13)
+    r8               = selected_real_kind(6)!selected_real_kind(13)
 
 
 end module kinds

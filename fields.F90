@@ -12,14 +12,20 @@ module fields
 
     type field2D
         type (field_info) info
-        real(kind=r8), allocatable, dimension(:,:) :: fieldVal
+        ! REAL(kind=r8), allocatable, dimension(:,:) :: fieldVal
     end type
 
 
     type(field2D), ALLOCATABLE, DIMENSION(:):: input2DOcnFields
     type(field2D), ALLOCATABLE, DIMENSION(:):: output2DOcnFields
-    REAL(kind=r8) :: timeVal
-    CHARACTER(len = char_len_short) :: timeUnits 
+
+
+    REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:), SAVE :: Pressure, UVEL, VVEL, &
+                                                  TAUX, TAUY, &
+                                                  PowerPerArea, &
+                                                  OL_UVEL, OL_VVEL, &
+                                                  OL_TAUX, OL_TAUY, &
+                                                  OL_PowerPerArea
 
     contains
 
@@ -28,7 +34,7 @@ module fields
         allocate(input2DOcnFields(nVars2read))
         do i=1, nVars2read
             input2DOcnFields(i)%info%fieldName = trim(adjustl(varNameList(i)))
-            allocate(input2DOcnFields(i)%fieldVal(nxpo,nypo))
+            !allocate(input2DOcnFields(i)%fieldVal(nxpo,nypo))
         enddo
     end subroutine
 
@@ -65,10 +71,46 @@ module fields
         output2DOcnFields(7)%info%longName = '\overline{\tau . u} - \overline{\tau} . \overline{u}'
         output2DOcnFields(7)%info%units = 'Watt/m^2'
         
-        do i=1, nVars2read
-            allocate(output2DOcnFields(i)%fieldVal(nxpo,nypo))
-        enddo
+        ! do i=1, 7
+        !     allocate(output2DOcnFields(i)%fieldVal(nxpo,nypo))
+        ! enddo
     end subroutine
+
+
+    subroutine init_workFields()
+        if (ALLOCATED(UVEL)) then
+            DEALLOCATE(Pressure, UVEL, VVEL, &
+                       TAUX, TAUY, &
+                       PowerPerArea, &
+                       OL_UVEL, OL_VVEL, &
+                       OL_TAUX, OL_TAUY, &
+                       OL_PowerPerArea)
+        endif
+
+        allocate(Pressure(nxpo, nypo), &
+                 UVEL(nxpo, nypo), VVEL(nxpo, nypo), &
+                 TAUX(nxpo, nypo), TAUY(nxpo, nypo), &
+                 PowerPerArea(nxpo, nypo), &
+                 OL_UVEL(nxpo, nypo), OL_VVEL(nxpo, nypo), &
+                 OL_TAUX(nxpo, nypo), OL_TAUY(nxpo, nypo), &
+                 OL_PowerPerArea(nxpo, nypo))
+
+    end subroutine
+
+    ! subroutine setOutputFields()
+    !     REAL(kind=r8) :: MPPA(nxpo, nypo), EPPA(nxpo, nypo)
+    !     MPPA = OL_TAUX * OL_UVEL + OL_TAUY * OL_VVEL
+    !     EPPA = OL_PowerPerArea - MPPA
+
+    !     output2DOcnFields(1)%fieldVal = OL_UVEL
+    !     output2DOcnFields(2)%fieldVal = OL_VVEL
+    !     output2DOcnFields(3)%fieldVal = OL_TAUX
+    !     output2DOcnFields(4)%fieldVal = OL_TAUY
+    !     output2DOcnFields(5)%fieldVal = OL_PowerPerArea
+    !     output2DOcnFields(6)%fieldVal = MPPA
+    !     output2DOcnFields(7)%fieldVal = EPPA
+
+    ! end subroutine
 
 end module
 

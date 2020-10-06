@@ -26,9 +26,12 @@ module netCDFio
                   var_id, file_id, field_id, &
                   ierr, &
                   endcount(4), &
-                  startcount(4)
+                  startcount(4), &
+                  endcount2(3), &
+                  startcount2(3)
 
-        real(kind =r8) :: tempField2D(nxpo,nypo)
+
+        real(kind =r8) :: tempField2D(nxpo,nypo,3)
 
         path_n_file = trim(adjustl(inputpath))//trim(adjustl(filename))
 
@@ -65,7 +68,7 @@ module netCDFio
         ierr = nf_get_vara_real(file_id,var_id,(/recDim_count/),(/1/),timeVal)
         if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_vara_real: time Val')
 
-
+        
         num_of_var = size(input2DOcnFields)
 
         do var_counter = 1,num_of_var
@@ -76,6 +79,9 @@ module netCDFio
             startcount = (/1, 1, k_level, recDim_count/)
             endcount = (/nxpo, nypo, 1 , 1/)
 
+            startcount2 = (/1, 1, recDim_count/)
+            endcount2 = (/nxpo, nypo, 1/)
+
             ierr = NF_GET_ATT_TEXT (file_id, var_id, 'long_name', longName)
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_att')
             input2DOcnFields(var_counter)%info%longName = longName
@@ -84,10 +90,15 @@ module netCDFio
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_att')
             input2DOcnFields(var_counter)%info%longName = longName
 
-            ierr = nf_get_vara_real(file_id,var_id,startcount,endcount,tempField2D)
+            if (var_counter .EQ. 1) then
+              ierr = nf_get_vara_real(file_id, var_id, startcount, endcount, tempField2D(:,:,var_counter))
+            else
+              ierr = nf_get_vara_real(file_id, var_id, startcount2, endcount2, tempField2D(:,:,var_counter))
+            endif
+
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_field')
 
-            input2DOcnFields(var_counter)%fieldVal(:,:) = tempField2D(:,:)
+            !input2DOcnFields(var_counter)%fieldVal(:,:) = tempField2D(:,:)
 
             WRITE(*,'(A,A)')  '  Variable name :',trim(varName)
             WRITE(*,'(A,A)')  '  Long name     :',trim(longName)
@@ -101,6 +112,12 @@ module netCDFio
         print *, 'Closing file  ', trim(path_n_file), ' ... '
 
         ierr = nf_close(file_id)
+
+        Pressure(:,:) = tempField2D(:,:,1)
+        TAUX(:,:) = tempField2D(:,:,2)
+        TAUY(:,:) = tempField2D(:,:,3)
+        
+
         
 
     end subroutine
@@ -127,8 +144,7 @@ module netCDFio
                  time_id
 
       integer ::field_id(7)
-
-      REAL(kind=r8):: wfield(nxpo, nypo, 1)
+      REAL(kind=r8):: wfield(nxpo, nypo, 7)
 
       filename = trim(adjustl(outPath))//'/'//&
                  trim(adjustl(outFileName))
@@ -139,14 +155,14 @@ module netCDFio
       !  open netcdf file
       !-------------------------------------------------------------------
 
-      print *,'Opening to write ...',filename
+      ! print *,'Opening to write ...',filename
    	  status = nf_create(filename, nf_clobber, f_id)
    	  if (status /= nf_noerr) stop 'at create file'
 
       !-------------------------------------------------------------------
       !  define dimensions
       !-------------------------------------------------------------------
-      print *, 'Defining dimensions ...'
+      ! print *, 'Defining dimensions ...'
 
       status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
       if (status /= nf_noerr) stop 'at def x_dim'
@@ -157,15 +173,15 @@ module netCDFio
       status = nf_def_dim(f_id, 'time', 1, time_dim_id)
       if (status /= nf_noerr) stop 'at def y_dim'
 
-      print *, 'Dimensions defined'
+      ! print *, 'Dimensions defined'
 
       coord_ids(1)=x_dim_id
       coord_ids(2)=y_dim_id
       coord_ids(3)=time_dim_id
 
 
-      print *,''
-      print *, 'Defining field variable'
+      ! print *,''
+      ! print *, 'Defining field variable'
 
       status = nf_def_var(f_id, &
                           'xpo', &
@@ -235,7 +251,7 @@ module netCDFio
       status = nf_enddef(f_id)
       if (status /= nf_noerr) stop 'at enddef'
 
-        print *, 'Defining variables SUCCESS...'
+      !print *, 'Defining variables SUCCESS...'
 
       !-------------------------------------------------------------------
       !  start writing the file
@@ -256,18 +272,30 @@ module netCDFio
                           timeVal )
         if (status /= nf_noerr) stop 'at writing timeVal'
 
-    print *, 'xpo ypo and time written ... '
+    ! print *, 'xpo ypo and time written ... '
+
+    if (taskid == MASTER) then
+      wfield(:,:,1) = OL_UVEL
+      wfield(:,:,2) = OL_VVEL
+      wfield(:,:,3) = OL_TAUX
+      wfield(:,:,4) = OL_TAUY
+      wfield(:,:,5) = OL_PowerPerArea
+      wfield(:,:,6) = OL_TAUX * OL_UVEL + OL_TAUY * OL_VVEL
+      wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
+
+    endif
+    
 
       do counter = 1, 7
-        !!wfield(:,:,1) = output2DOcnFields(counter)%fieldVal(:,:)
         status = nf_put_var(f_id, &
                             field_id(counter), &
-                             wfield)
+                            ! (/1,1,1/), (/nxpo, nypo, 1/), &
+                             wfield(:,:,counter))
         if (status /= nf_noerr) stop 'at put var'
       enddo ! write feilds
 
 
-      print *, 'Written file', filename 
+      print *, 'Written file ', filename 
       status = nf_close(f_id)
         if (status /= nf_noerr) stop 'at close'
 

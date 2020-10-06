@@ -1,5 +1,6 @@
 module configMod
     use kinds
+    use constants
     implicit none
 
     !! file informations
@@ -20,7 +21,10 @@ module configMod
                             varNameList                     !! names of input Variables
 
 
-    REAL(kind =r4) , ALLOCATABLE, DIMENSION(:) :: filterLengthList   !! filter lengths in km
+    REAL(kind =r8) , ALLOCATABLE, DIMENSION(:) :: filterLengthList   !! filter lengths in km
+
+    INTEGER(kind=i4) :: startRecCount, endRecCount  !! record counts to be read from a file
+    
 
 
     contains 
@@ -44,7 +48,9 @@ module configMod
         namelist /for_allocation/ &
         nInputFiles, &
         nVars2read,    &
-        nFilterLength
+        nFilterLength, &
+        startRecCount, &
+        endRecCount
 
         namelist /fileName_VarName/ &
         inputFileList, &
@@ -52,6 +58,9 @@ module configMod
 
         namelist /filterLenList/ &
         filterLengthList
+
+        namelist /coriolis/ &
+        f0
 
         print *, ''
         print *, 'CONFIG FILE'
@@ -79,6 +88,7 @@ module configMod
         WRITE(* ,'(A30,I4)') 'number of input files =', nInputFiles
         WRITE(* ,'(A30,I4)') 'number of variables to read =', nVars2read
         WRITE(* ,'(A30,I4)') 'number of filterlengths =', nFilterLength
+        WRITE(* ,'(A30,I4,A4,I4)') 'reading from record no ', startRecCount,' to ', endRecCount
 
         allocate(inputFileList(nInputFiles), &
                  varNameList(nVars2read), &
@@ -86,7 +96,6 @@ module configMod
 
         read(*, fileName_VarName)
         read(*, filterLenList)
-
 
         print *, ''
         print *, 'Files to be read ... '
@@ -107,6 +116,11 @@ module configMod
         do i=1, nFilterLength
             WRITE(* ,'(f07.2,A3)') filterLengthList(i),'km'
         end do
+
+        read(*, coriolis)
+        print *, ''
+        print *, 'Reading coriolis paramater ...'
+        WRITE(* ,'(A30,E10.2)') 'coriolis parameter(f0) =', f0
         
     end subroutine makeConfig
 

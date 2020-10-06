@@ -23,6 +23,8 @@ nza_c = 3
 nInputFiles=1
 nVars2read=3
 nFilterLength=2
+startRecCount = 1
+endRecCount = 10
 /
 
 &fileName_VarName
@@ -31,6 +33,9 @@ varNameList="p","taux","tauy"
 /
 
 &filterLenList
-filterLengthList = 100, 200
+filterLengthList = 100,200
 /
 
+&coriolis
+f0=9.37456d-5
+/
