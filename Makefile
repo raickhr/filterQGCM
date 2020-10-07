@@ -44,7 +44,6 @@ operators.o: kinds.o constants.o gridMod.o
 gatherScatter.o: kinds.o mpiMod.o
 	$(FC) -c gatherScatter.F90
 
-
 clean:
 	rm -rf *.o *.mod filterQGCM
 
