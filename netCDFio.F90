@@ -1,5 +1,6 @@
 module netCDFio
     use kinds
+    use configMod
     use gridMod
     use fields
     use ncdf_wrapper
@@ -7,19 +8,19 @@ module netCDFio
     
     contains
 
-    subroutine readInputOcnVars2D_P(inputpath, &
-                                    filename, & 
-                                    k_level, &
-                                    recDim_count)
+    subroutine readInputOcnVars2D_P(fileCounter, recDim_count)
+        INTEGER(kind = i4) , INTENT(IN) :: fileCounter, recDim_count
 
-        character(len=*), intent(in) :: inputpath,filename
-        integer, intent(in) :: k_level, recDim_count
+        CHARACTER (len = char_len_long) :: inputpath
+        CHARACTER (len = char_len) :: filename
 
         character(len=char_len):: path_n_file
 
         CHARACTER(len=char_len_short) :: varName, &
                                          longName, &
                                          units
+
+        integer(kind = i4):: k_level, nxpo, nypo
         
         integer(kind=i4):: num_of_var, &
                   var_counter, &
@@ -31,7 +32,20 @@ module netCDFio
                   startcount2(3)
 
 
-        real(kind =r8) :: tempField2D(nxpo,nypo,3)
+        real(kind =r8), ALLOCATABLE :: tempField2D(:,:,:), &
+                                       xpo(:), &
+                                       ypo(:)
+
+        setOcnPgridXYsizeto(nxpo, nypo)
+        k_level = 1
+
+        ALLOCATE(tempField2D(nxpo, nypo, 3), &
+                 xpo(nxpo), &
+                 ypo(nypo))
+
+
+        inputpath = trim(adjustl(getInputLoc()))
+        filename = trim(adjustl(getInFileNo(fileCounter)))
 
         path_n_file = trim(adjustl(inputpath))//trim(adjustl(filename))
 
@@ -69,10 +83,10 @@ module netCDFio
         if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_vara_real: time Val')
 
         
-        num_of_var = size(input2DOcnFields)
+        num_of_var = numVarsToRead()
 
         do var_counter = 1,num_of_var
-            varName = trim(adjustl(input2DOcnFields(var_counter)%info%fieldName))
+            varName = trim(adjustl(getVarNameNo(var_counter)))
             ierr = nf_inq_varid(file_id,trim(adjustl(varName)),var_id)
 
             if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_inq_varid')
@@ -113,12 +127,14 @@ module netCDFio
 
         ierr = nf_close(file_id)
 
-        Pressure(:,:) = tempField2D(:,:,1)
-        TAUX(:,:) = tempField2D(:,:,2)
-        TAUY(:,:) = tempField2D(:,:,3)
-        
+        saveReadInputFields(tempField2D(:,:,1), &
+                            tempField2D(:,:,2), &
+                            tempField2D(:,:,3))
 
-        
+        saveReadXpoYpo(xpo,ypo)
+
+        DEALLOCATE(tempField2D, xpo, ypo)
+
 
     end subroutine
 

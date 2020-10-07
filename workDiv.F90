@@ -2,12 +2,17 @@ module workDiv
     use kinds
     use gridMod
     use mpiMod
+    use gatherScatter
     implicit none
+    private 
+    save
 
     !! variables for workDivison
     integer(kind = i4) :: start_col, &
                           end_col, &
                           ncol
+
+    PUBLIC :: get_start_col, get_end_col, get_ncol
     contains
 
     subroutine divide_task(gridType, ocnORatmGrid)
@@ -20,9 +25,13 @@ module workDiv
         CHARACTER, INTENT(IN) :: gridType
         CHARACTER, OPTIONAL :: ocnORatmGrid
 
-        INTEGER(kind=i4) :: nx, ny, avg_col, extra_col
+        INTEGER(kind=i4) :: nx, ny, avg_col, extra_col, &
+                            dest, source, numworkers, &
+                            err
 
-        if (taskid .EQ. MASTER ) then
+        numworkers = totalWorkers()
+
+        if (thisProc() .EQ. MASTER ) then
 
             print *, 'dividing task ...'
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -34,24 +43,19 @@ module workDiv
                 if ((ocnORatmGrid .EQ. 'A') .OR. &
                     (ocnORatmGrid .EQ. 'a')) then
                     if ( gridType .EQ. 'T') then 
-                        nx = nxta
-                        ny = nyta
+                        setAtmTgridXYsizeto(nx,ny)
                     else
-                        nx = nxpa
-                        ny = nypa
+                        setAtmPgridXYsizeto(nx,ny)
                     endif
                 else
                     if ( gridType .EQ. 'T') then 
-                        nx = nxto
-                        ny = nyto
+                        setOcnTgridXYsizeto(nx,ny)
                     else
-                        nx = nxpo
-                        ny = nypo
+                        setOcnPgridXYsizeto(nx,ny)
                     endif
                 endif
             else
-                nx = nxpo
-                ny = nypo
+                setOcnPgridXYsizeto(nx,ny)
             endif
 
             extra_col = mod(ny,numworkers)
@@ -66,8 +70,7 @@ module workDiv
                 endif
 
                 end_col = start_col + ncol -1
-                
-
+            
                 call MPI_SEND( start_col, 1, MPI_INTEGER, dest, msg_tag + 1, &
                                MPI_COMM_WORLD, i_err )
                 call MPI_SEND( end_col, 1, MPI_INTEGER, dest, msg_tag + 2, &
@@ -78,12 +81,6 @@ module workDiv
                 print *,'proc, start_col, end_col, ncol', dest, start_col, end_col, ncol
                 
                 start_col = start_col + ncol
-
-            !print *,'offset and ncol sent to taskid', dest
-            
-            
-
-
             enddo
 
         else 

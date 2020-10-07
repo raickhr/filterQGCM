@@ -4,37 +4,50 @@ module fields
     use configMod
 
     implicit none
+    PRIVATE
+    SAVE
+
     type field_info                       
         character (len=char_len_short):: fieldName
         character (len=char_len_short):: longName
         character (len=char_len_short):: units
     end type
 
-    type field2D
-        type (field_info) info
-        ! REAL(kind=r8), allocatable, dimension(:,:) :: fieldVal
-    end type
+
+    type(field_info), ALLOCATABLE, DIMENSION(:):: input2DOcnFields
+    type(field_info), ALLOCATABLE, DIMENSION(:):: output2DOcnFields
 
 
-    type(field2D), ALLOCATABLE, DIMENSION(:):: input2DOcnFields
-    type(field2D), ALLOCATABLE, DIMENSION(:):: output2DOcnFields
+    REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:), PRIVATE :: &
+                    Pressure, UVEL, VVEL, &
+                    TAUX, TAUY, &
+                    PowerPerArea, &
+                    OL_UVEL, OL_VVEL, &
+                    OL_TAUX, OL_TAUY, &
+                    OL_PowerPerArea
 
-
-    REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:), SAVE :: Pressure, UVEL, VVEL, &
-                                                  TAUX, TAUY, &
-                                                  PowerPerArea, &
-                                                  OL_UVEL, OL_VVEL, &
-                                                  OL_TAUX, OL_TAUY, &
-                                                  OL_PowerPerArea
+    PUBLIC :: init_inputOcnFields, &
+                init_outputOcnFields, &
+                reset_workFields, &
+                reset_FilteredFields, &
+                saveReadInputFields, &
+                saveInputFields, &
+                saveOutputFields, &
+                getInputFields, &
+                getOutputFields
 
     contains
 
     subroutine init_inputOcnFields()
-        INTEGER(kind=i4):: i
-        allocate(input2DOcnFields(nVars2read))
-        do i=1, nVars2read
-            input2DOcnFields(i)%info%fieldName = trim(adjustl(varNameList(i)))
-            !allocate(input2DOcnFields(i)%fieldVal(nxpo,nypo))
+        INTEGER(kind=i4):: i, nVars2read
+        CHARACTER (len = char_len_short) :: varNameList(numVarsToRead())
+        
+        call getVarNameListIn(varNameList)
+
+        allocate(input2DOcnFields(numVarsToRead()))
+
+        do i=1, numVarsToRead() 
+            input2DOcnFields(i)%fieldName = trim(adjustl(varNameList(i)))
         enddo
     end subroutine
 
@@ -43,33 +56,33 @@ module fields
         nOutputFields = 7
         allocate(output2DOcnFields(nOutputFields))
 
-        output2DOcnFields(1)%info%fieldName = 'UVEL'
-        output2DOcnFields(1)%info%longName = 'filtered zonal velocity'
-        output2DOcnFields(1)%info%units = 'm/s'
+        output2DOcnFields(1)%fieldName = 'UVEL'
+        output2DOcnFields(1)%longName = 'filtered zonal velocity'
+        output2DOcnFields(1)%units = 'm/s'
 
-        output2DOcnFields(2)%info%fieldName = 'VVEL'
-        output2DOcnFields(2)%info%longName = 'filtered meridional velocity'
-        output2DOcnFields(2)%info%units = 'm/s'
+        output2DOcnFields(2)%fieldName = 'VVEL'
+        output2DOcnFields(2)%longName = 'filtered meridional velocity'
+        output2DOcnFields(2)%units = 'm/s'
 
-        output2DOcnFields(3)%info%fieldName = 'TAUX'
-        output2DOcnFields(3)%info%longName = 'filtered zonal surface wind stress'
-        output2DOcnFields(3)%info%units = 'Pascal'
+        output2DOcnFields(3)%fieldName = 'TAUX'
+        output2DOcnFields(3)%longName = 'filtered zonal surface wind stress'
+        output2DOcnFields(3)%units = 'Pascal'
 
-        output2DOcnFields(4)%info%fieldName = 'TAUY'
-        output2DOcnFields(4)%info%longName = 'filtered meriodional surface wind stress'
-        output2DOcnFields(4)%info%units = 'Pascal'
+        output2DOcnFields(4)%fieldName = 'TAUY'
+        output2DOcnFields(4)%longName = 'filtered meriodional surface wind stress'
+        output2DOcnFields(4)%units = 'Pascal'
 
-        output2DOcnFields(5)%info%fieldName = 'TotalPowerPerArea'
-        output2DOcnFields(5)%info%longName = '\overline{\tau . u}'
-        output2DOcnFields(5)%info%units = 'Watt/m^2'
+        output2DOcnFields(5)%fieldName = 'TotalPowerPerArea'
+        output2DOcnFields(5)%longName = '\overline{\tau . u}'
+        output2DOcnFields(5)%units = 'Watt/m^2'
 
-        output2DOcnFields(6)%info%fieldName = 'MeanPowerPerArea'
-        output2DOcnFields(6)%info%longName = '\overline{\tau} . \overline{u}'
-        output2DOcnFields(6)%info%units = 'Watt/m^2'
+        output2DOcnFields(6)%fieldName = 'MeanPowerPerArea'
+        output2DOcnFields(6)%longName = '\overline{\tau} . \overline{u}'
+        output2DOcnFields(6)%units = 'Watt/m^2'
 
-        output2DOcnFields(7)%info%fieldName = 'EddyPowerPerArea'
-        output2DOcnFields(7)%info%longName = '\overline{\tau . u} - \overline{\tau} . \overline{u}'
-        output2DOcnFields(7)%info%units = 'Watt/m^2'
+        output2DOcnFields(7)%fieldName = 'EddyPowerPerArea'
+        output2DOcnFields(7)%longName = '\overline{\tau . u} - \overline{\tau} . \overline{u}'
+        output2DOcnFields(7)%units = 'Watt/m^2'
         
         ! do i=1, 7
         !     allocate(output2DOcnFields(i)%fieldVal(nxpo,nypo))
@@ -78,6 +91,9 @@ module fields
 
 
     subroutine reset_workFields()
+        INTEGER(kind = i4) :: nxpo, nypo
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
         if (ALLOCATED(UVEL)) then
             DEALLOCATE(Pressure, UVEL, VVEL, &
                        TAUX, TAUY, &
@@ -92,6 +108,9 @@ module fields
     end subroutine
 
     subroutine reset_FilteredFields()
+        INTEGER(kind = i4) :: nxpo, nypo
+        call setOcnPgridXYsizeto(nxpo, nypo)
+        
         if (ALLOCATED(OL_UVEL)) then
             DEALLOCATE(OL_UVEL, OL_VVEL, &
                        OL_TAUX, OL_TAUY, &
@@ -103,20 +122,102 @@ module fields
                  OL_PowerPerArea(nxpo, nypo))
     endsubroutine
 
-    ! subroutine setOutputFields()
-    !     REAL(kind=r8) :: MPPA(nxpo, nypo), EPPA(nxpo, nypo)
-    !     MPPA = OL_TAUX * OL_UVEL + OL_TAUY * OL_VVEL
-    !     EPPA = OL_PowerPerArea - MPPA
+    subroutine saveReadInputFields(nxpo, nypo, inPressure, &
+                               inTAUX, inTAUY)
 
-    !     output2DOcnFields(1)%fieldVal = OL_UVEL
-    !     output2DOcnFields(2)%fieldVal = OL_VVEL
-    !     output2DOcnFields(3)%fieldVal = OL_TAUX
-    !     output2DOcnFields(4)%fieldVal = OL_TAUY
-    !     output2DOcnFields(5)%fieldVal = OL_PowerPerArea
-    !     output2DOcnFields(6)%fieldVal = MPPA
-    !     output2DOcnFields(7)%fieldVal = EPPA
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(IN) ::  inPressure(nxpo, nypo), &
+                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo)
 
-    ! end subroutine
+        Pressure(:,:) = inPressure(:,:)
+        TAUX(:,:) = inTAUX(:,:)
+        TAUY(:,:) = inTAUY(:,:)
+
+    end subroutine
+
+    subroutine getPressureField(nxpo, nypo, outPressure)
+
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(OUT) ::  outPressure(nxpo, nypo)
+
+        outPressure(:,:) = Pressure(:,:)
+
+    end subroutine
+
+    subroutine saveInputFields(nxpo, nypo, inUVEL, inVVEL, &
+                               inTAUX, inTAUY)
+
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(IN) ::  inUVEL(nxpo, nypo), inVVEL(nxpo, nypo), &
+                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo)
+
+        
+        UVEL(:,:) = inUVEL(:,:)
+        VVEL(:,:) = inVVEL(:,:)
+        TAUX(:,:) = inTAUX(:,:)
+        TAUY(:,:) = inTAUY(:,:)
+        PowerPerArea = UVEL * TAUX + VVEL * TAUY 
+
+    end subroutine
+
+    subroutine saveOutputFields(nxpo, nypo, inUVEL, inVVEL, &
+                               inTAUX, inTAUY)
+
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(IN) ::  inUVEL(nxpo, nypo), inVVEL(nxpo, nypo), &
+                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo)
+
+        
+        OL_UVEL(:,:) = inUVEL(:,:)
+        OL_VVEL(:,:) = inVVEL(:,:)
+        OL_TAUX(:,:) = inTAUX(:,:)
+        OL_TAUY(:,:) = inTAUY(:,:)
+        OL_PowerPerArea = UVEL * TAUX + VVEL * TAUY 
+
+    end subroutine
+
+
+    subroutine getInputFields(nxpo, nypo, outUVEL, outVVEL, &
+                               outTAUX, outTAUY, outPPA)
+
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(OUT) ::  outUVEL(nxpo, nypo), outVVEL(nxpo, nypo), &
+                                        outTAUX(nxpo, nypo), outTAUY(nxpo, nypo), &
+                                        outPPA(nxpo, nypo)
+
+        
+        outUVEL(:,:) = UVEL(:,:)
+        outVVEL(:,:) = VVEL(:,:)
+        outTAUX(:,:) = TAUX(:,:)
+        outTAUY(:,:) = TAUY(:,:)
+        outPPA(:,:) = PowerPerArea(:,:)
+
+    end subroutine
+
+    subroutine getOutputFields(nxpo, nypo, outUVEL, outVVEL, &
+                               outTAUX, outTAUY, outPPA)
+
+        INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
+    
+        REAL(kind = r8), INTENT(OUT) ::  outUVEL(nxpo, nypo), outVVEL(nxpo, nypo), &
+                                        outTAUX(nxpo, nypo), outTAUY(nxpo, nypo), &
+                                        outPPA(nxpo, nypo)
+
+        
+        outUVEL(:,:) = OL_UVEL(:,:)
+        outVVEL(:,:) = OL_VVEL(:,:)
+        outTAUX(:,:) = OL_TAUX(:,:)
+        outTAUY(:,:) = OL_TAUY(:,:)
+        outPPA(:,:) = OL_PowerPerArea(:,:)
+
+    end subroutine
+
+    
 
 end module
 

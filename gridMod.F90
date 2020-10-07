@@ -3,9 +3,12 @@ module gridMod
     
     use kinds
     use configMod
-    use mpiMod
+    use gatherScatter
     
     implicit none
+    private 
+    save
+
 
     INTEGER(kind = i4) :: atm_npx, &     !! number of atm p points for x dim
                           atm_npy, &     !! number of atm p points for y dim
@@ -45,34 +48,42 @@ module gridMod
     REAL(kind=r8) :: prevTimeVal, timeVal
     CHARACTER(len = char_len_short) :: timeUnits 
 
+    PUBLIC :: init_grid, &
+              setOcnPgridXYsizeto, &
+              setOcnTgridXYsizeto, &
+              setAtmPgridXYsizeto, &
+              setAtmTgridXYsizeto, &
+              saveReadXpoYpo, &
+              getDxpo, getDypo
+
+
     contains
     subroutine init_grid()
         !! This subroutine initializes grid sizes from the config file given at terminal
+
+        INTEGER(kind = i4) :: err
 
         if (taskid == MASTER) then 
             print *,''
             print *, 'Initializing grid ...' 
 
-            nxto = nxto_c 
-            nyto = nyto_c
-            nzo = nzo_c
-            nxta = nxta_c
-            nyta = nyta_c
-            nza = nza_c
-            prevTimeVal = -111.00
-            timeVal = -111.00
+            call setAtmXYto(nxta, nyta,  nza)
+            call setOcnXYto(nxto, nyto,  nzo)
 
         endif
 
-        call MPI_BCAST(nxto, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-        call MPI_BCAST(nyto, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-        call MPI_BCAST(nzo, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
+        prevTimeVal = -111.00
+        timeVal = -111.00
 
-        call MPI_BCAST(nxta, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-        call MPI_BCAST(nyta, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-        call MPI_BCAST(nza, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
+        call broadCastInt(nxto, MASTER, err )
+        call broadCastInt(nyto, MASTER, err )
+        call broadCastInt(nzo, MASTER, err )
 
-        call MPI_Barrier(MPI_COMM_WORLD, i_err)
+        call broadCastInt(nxta, MASTER, err )
+        call broadCastInt(nyta, MASTER, err )
+        call broadCastInt(nza, MASTER, err )
+
+        call syncProcs(err)
 
         nxpo = nxto+1 
         nypo = nyto+1
@@ -80,8 +91,7 @@ module gridMod
         nxpa = nxta+1
         nypa = nyta+1
         nzia = nza-1
-
-
+        
         allocate(xpo(nxpo),  & 
                  ypo(nypo),  &
                  xto(nxto),  &
@@ -96,6 +106,48 @@ module gridMod
                  zia(nzia))
 
     end subroutine
+
+    subroutine setOcnPgridXYsizeto(ocnX, ocnY )
+        integer(kind = i4), INTENT(OUT) :: ocnX, ocnY
+        ocnX = nxpo
+        ocnY = nypo
+    end subroutine 
+
+    subroutine setOcnTgridXYsizeto(ocnX, ocnY )
+        integer(kind = i4), INTENT(OUT) :: ocnX, ocnY
+        ocnX = nxto
+        ocnY = nyto
+    end subroutine 
+
+    subroutine setAtmPgridXYsizeto(AtmX, AtmY )
+        integer(kind = i4), INTENT(OUT) :: AtmX, AtmY
+        AtmX = nxpa
+        AtmY = nypa
+    end subroutine 
+
+    subroutine setAtmTgridXYsizeto(AtmX, AtmY )
+        integer(kind = i4), INTENT(OUT) :: AtmX, AtmY
+        AtmX = nxta
+        AtmY = nyta
+    end subroutine 
+
+    subroutine saveReadXpoYpo(inxpo, inypo)
+
+        REAL(kind = r8), INTENT(IN) :: inxpo(nxpo), inypo(nypo)
+        xpo(:) = inxpo(:)
+        ypo(:) = inypo(:)
+
+    end subroutine
+
+    function getDxpo() result(returnVal)
+        REAL(kind = r8) :: returnVal
+        returnVal = xpo(2) - xpo(1)
+    end function
+
+    function getDypo() result(returnVal)
+        REAL(kind = r8) :: returnVal
+        returnVal = ypo(2) - ypo(1)
+    end function
 
 
     

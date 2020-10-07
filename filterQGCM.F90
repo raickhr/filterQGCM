@@ -11,30 +11,11 @@ program filterQGCM
     use workDiv    
 
     implicit none
-
-    INTEGER(kind=i4) :: recDim, &
-                        fileCounter, filterCounter, &
-                        glbGridSizeWithPadX, glbGridSizeWithPadY, &
-                        msgSize, & ! mpi message size
-                        knx, kny, &! kernel size
-                        is, ie, js, je, &
-                        dummmy
-                        
-    REAL(kind=r4) :: workFilterLen
-
-    CHARACTER(len=256) :: outputFileName, str_recDim, str_filterLen
     ! initialize MPI
     call startMPI()
 
     !!! Reads the i/o location and variables to read
-    if (taskid .EQ. MASTER) then 
-        call makeConfig()
-    endif
-
-    call MPI_BCAST(nInputFiles, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-    call MPI_BCAST(nFilterLength, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-    call MPI_BCAST(startRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
-    call MPI_BCAST(endRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, i_err)
+    call makeConfig()
 
     !! initialize grid
     call init_grid() 
@@ -48,26 +29,20 @@ program filterQGCM
     !! initialize the output fields
     call init_outputOcnFields()
 
-    do fileCounter =1, nInputFiles
+    !!! loop over file counter
+    do fileCounter =1, numFilesToRead()
+
         !!! loop over record dimnesion for a file
-        do recDim = startRecCount, endRecCount
+        do recDim = startRecIndx(), endRecIndx()
             !! intialize the workFields
             call reset_workFields()
             
-            if (taskid .EQ. MASTER ) then
-                call readInputOcnVars2D_P(inputLoc, &
-                                          inputFileList(1), & 
-                                          1, &
-                                          recDim)
+            if (thisProc() .EQ. MASTER ) then
+                call readInputOcnVars2D_P(fileCounter, recDim)
                 
                 !!!! claculate the ugos, vgos from pressure and taux , tauy copy for filtering
                 
-                call calc_Ugos_Vgos(Pressure, UVEL, VVEL)
-
-                TAUX(:,:) = rho_o * TAUX
-                TAUY(:,:) = rho_o * TAUY
-
-                PowerPerArea = UVEL * TAUX + VVEL * TAUY
+                call calc_Ugos_Vgos_taux_tauy()
 
                 ! print *, 'ugos, vgos, taux, tauy obtained ... '
                 

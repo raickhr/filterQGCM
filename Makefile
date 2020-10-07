@@ -26,16 +26,16 @@ netCDFio.o: kinds.o gridMod.o fields.o ncdf_wrapper.o
 ncdf_wrapper.o : ncdf_wrapper.F90
 	$(FC) $(FFLAGS) -c ncdf_wrapper.F90
 
-gridMod.o: gridMod.F90 kinds.o configMod.o mpiMod.o
+gridMod.o: kinds.o configMod.o mpiMod.o
 	$(FC) -c gridMod.F90
 
-configMod.o: configMod.F90 kinds.o constants.o
+configMod.o: kinds.o constants.o mpiMod.o gatherScatter.o
 	$(FC) -c configMod.F90
 
 fields.o: kinds.o gridMod.o configMod.o 
 	$(FC) -c fields.F90
 
-workDiv.o: gridMod.o mpiMod.o
+workDiv.o: gridMod.o mpiMod.o gatherScatter.o
 	$(FC) -c workDiv.F90
 
 operators.o: kinds.o constants.o gridMod.o
