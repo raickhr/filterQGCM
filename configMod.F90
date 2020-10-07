@@ -2,6 +2,7 @@ module configMod
     use kinds
     use constants
     use gatherScatter
+    use mpiMod
 
     implicit none
     private 
@@ -149,10 +150,10 @@ module configMod
         
         endif
 
-        broadCastInt(nInputFiles, MASTER, err)
-        broadCastInt(nFilterLength, MASTER, err)
-        broadCastInt(startRecCount, MASTER, err)
-        broadCastInt(endRecCount, MASTER, err)
+        call broadCastInt(nInputFiles, MASTER, err)
+        call broadCastInt(nFilterLength, MASTER, err)
+        call broadCastInt(startRecCount, MASTER, err)
+        call broadCastInt(endRecCount, MASTER, err)
 
         
     end subroutine makeConfig
@@ -167,7 +168,7 @@ module configMod
     subroutine setOcnXYto(ocnX, ocnY, ocnLyrs)
         integer(kind = i4), INTENT(OUT) :: ocnX, ocnY, ocnLyrs
         ocnX = nxto_c
-        ocnY = nyt0_c
+        ocnY = nyto_c
         ocnLyrs = nzo_c
     end subroutine 
 

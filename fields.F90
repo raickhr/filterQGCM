@@ -14,8 +14,8 @@ module fields
     end type
 
 
-    type(field_info), ALLOCATABLE, DIMENSION(:):: input2DOcnFields
-    type(field_info), ALLOCATABLE, DIMENSION(:):: output2DOcnFields
+    type(field_info), ALLOCATABLE, DIMENSION(:), PUBLIC:: input2DOcnFields
+    type(field_info), ALLOCATABLE, DIMENSION(:), PUBLIC:: output2DOcnFields
 
 
     REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:), PRIVATE :: &
@@ -40,15 +40,19 @@ module fields
 
     subroutine init_inputOcnFields()
         INTEGER(kind=i4):: i, nVars2read
-        CHARACTER (len = char_len_short) :: varNameList(numVarsToRead())
-        
-        call getVarNameListIn(varNameList)
+        CHARACTER (len = char_len_short), ALLOCATABLE, DIMENSION(:) :: varNameList
 
-        allocate(input2DOcnFields(numVarsToRead()))
+        allocate(varNameList(numVarsToRead()), &
+                 input2DOcnFields(numVarsToRead()))
+
+        call getVarNameListIn(varNameList)
 
         do i=1, numVarsToRead() 
             input2DOcnFields(i)%fieldName = trim(adjustl(varNameList(i)))
         enddo
+
+        DEALLOCATE(varNameList)
+
     end subroutine
 
     subroutine init_outputOcnFields()

@@ -1,15 +1,14 @@
 module mpiMod
     use kinds   
-    implicit none
-    private 
+    implicit none 
     save
 
     include 'mpif.h'
 
-    INTEGER(kind = i4) :: i_err, &
-                        taskid, &
-                        numtasks, &
-                        numworkers
+    INTEGER(kind = i4), PRIVATE :: i_err, &
+                                   taskid, &
+                                   numtasks, &
+                                   numworkers
    
     INTEGER(kind = i4), PUBLIC :: MASTER 
 

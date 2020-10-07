@@ -41,6 +41,10 @@ workDiv.o: gridMod.o mpiMod.o gatherScatter.o
 operators.o: kinds.o constants.o gridMod.o
 	$(FC) -c operators.F90
 
+gatherScatter.o: kinds.o mpiMod.o
+	$(FC) -c gatherScatter.F90
+
+
 clean:
 	rm -rf *.o *.mod filterQGCM
 

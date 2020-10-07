@@ -4,6 +4,7 @@ module gridMod
     use kinds
     use configMod
     use gatherScatter
+    use mpiMod
     
     implicit none
     private 
@@ -63,7 +64,7 @@ module gridMod
 
         INTEGER(kind = i4) :: err
 
-        if (taskid == MASTER) then 
+        if (thisProc() == MASTER) then 
             print *,''
             print *, 'Initializing grid ...' 
 
