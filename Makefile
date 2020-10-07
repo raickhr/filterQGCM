@@ -1,4 +1,4 @@
-FC=mpif90 #ifort
+FC=mpif90
 FFLAGS=`nf-config --fflags`
 FLIBS=`nf-config --flibs`
 

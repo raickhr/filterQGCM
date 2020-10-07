@@ -7,7 +7,24 @@ module filter
     implicit none
 
 
-    real(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: kernel
+    real(kind = r8), ALLOCATABLE, DIMENSION(:,:), PRIVATE :: kernel
+
+    REAL(kind = r8) , ALLOCATABLE, DIMENSION(:,:), PRIVATE :: inUVEL, &
+                                                    outUVEL, &
+                                                    inVVEL, &
+                                                    outVVEL, &
+                                                    inTAUX, &
+                                                    outTAUX, &
+                                                    inTAUY, &
+                                                    outTAUY, &
+                                                    inPPA, &
+                                                    outPPA
+
+    REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:), PRIVATE  :: uf_UVEL, &
+                                                    uf_VVEL, &
+                                                    uf_TAUX, &
+                                                    uf_TAUY, &
+                                                    uf_PPA
 
     real(kind = r8) :: dArea
 
@@ -95,9 +112,13 @@ module filter
         
         kernel = weight/sum(weight)
 
-        ! where (distFromCenter > filterLength/2)
-        !     kernel = 0
-        ! endwhere
+        if (taskid .EQ. MASTER ) then !MASTER
+            write(*,'(A15,I4,I4)') 'kernel size', knx, kny
+            ! do dummmy =1, knx
+            !     write(*,'(13F11.5)') kernel(dummmy, :)
+            ! enddo
+            print *, 'sum Kernel=', sum(kernel)
+        endif
         
         
     end subroutine
@@ -118,9 +139,9 @@ module filter
         kny = size(kernel,2)
 
         is = knx/2 +1
-        ie = nxpo + knx/2+1
+        ie = nxpo + knx/2
         js = kny/2 +1
-        je = nypo + kny/2+1
+        je = nypo + kny/2
 
         allocate(UN_FILT_FEILD(nxpo + knx-1, nypo+kny-1), &
                 FILT_FEILD(nxpo + knx-1, nypo+kny-1))
@@ -133,6 +154,9 @@ module filter
         if (taskid .NE. MASTER) then   
             strt_col = start_col +kny/2
             ed_col = end_col +kny/2
+
+
+            FILT_FEILD(:,:) = taskid * 10
 
             !print *, 'before filtering at point'
             do j = strt_col, ed_col
@@ -150,14 +174,19 @@ module filter
             call MPI_SEND( strt_col, 1, MPI_INTEGER, MASTER, startCol_tag + taskid, &
             &                 MPI_COMM_WORLD, i_err )
 
+            call MPI_SEND( ed_col, 1, MPI_INTEGER, MASTER, endCol_tag + taskid, &
+            &                 MPI_COMM_WORLD, i_err )
+
             call MPI_SEND( data_size, 1, MPI_INTEGER, MASTER, dataSize_tag + taskid, &
             &                 MPI_COMM_WORLD, i_err )
 
             call MPI_SEND( FILT_FEILD(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_UVEL_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            & 1111, MPI_COMM_WORLD, status, i_err )
+
+            
 
         
-        else
+        elseif (taskid .EQ. MASTER) then 
             do source = 1, numworkers
 
                 call MPI_RECV( strt_col, 1, MPI_INTEGER, source, startCol_tag + source, &
@@ -165,6 +194,14 @@ module filter
 
                 if (i_err .NE. MPI_SUCCESS ) then 
                     print *, 'from taskid',taskid,' recv start_col'
+                    call MPI_ABORT(MPI_COMM_WORLD, i_err)
+                endif
+
+                call MPI_RECV( ed_col, 1, MPI_INTEGER, source, endCol_tag + source, &
+                &                 MPI_COMM_WORLD, status, i_err )
+
+                if (i_err .NE. MPI_SUCCESS ) then 
+                    print *, 'from taskid',taskid,' recv end_col'
                     call MPI_ABORT(MPI_COMM_WORLD, i_err)
                 endif
 
@@ -177,22 +214,26 @@ module filter
                 endif
 
                 call MPI_RECV( FILT_FEILD(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_UVEL_tag + source, MPI_COMM_WORLD, status, i_err )
+                & 1111, MPI_COMM_WORLD, status, i_err )
 
                 if (i_err .NE. MPI_SUCCESS ) then 
                     print *, 'from taskid',taskid,' recv OL_UVEL'
                     call MPI_ABORT(MPI_COMM_WORLD, i_err)
                 endif
 
+                !print *, 'at taskid ',source,' start_col, endcol ', strt_col, ed_col
+
                 !print *, 'RECEIVED from Source', source
             
             enddo
 
+            outField(1:nxpo,1:nypo) = FILT_FEILD(is:ie, js:je)
+            
+
         endif
 
         call MPI_BARRIER(MPI_COMM_WORLD, i_err)
-
-        outField = FILT_FEILD(is:ie, js:je)
+        
         DEALLOCATE(UN_FILT_FEILD, FILT_FEILD)
 
 
@@ -225,5 +266,201 @@ module filter
         DEALLOCATE(uf_WORK)
     
     end function
+
+    subroutine filterFields()
+        INTEGER (kind=i4) :: strt_col, ed_col, data_size, row_size, &
+                             i, j, &
+                             knx, kny, &
+                             is, ie, js, je
+
+        knx = size(kernel,1)
+        kny = size(kernel,2)
+
+        is = knx/2 +1
+        ie = nxpo + knx/2
+        js = kny/2 +1
+        je = nypo + kny/2
+
+        allocate(inUVEL(nxpo + knx-1, nypo+kny-1), &
+                 outUVEL(nxpo + knx-1, nypo+kny-1), &
+                 inVVEL(nxpo + knx-1, nypo+kny-1), &
+                 outVVEL(nxpo + knx-1, nypo+kny-1), &
+                 inTAUX(nxpo + knx-1, nypo+kny-1), &
+                 outTAUX(nxpo + knx-1, nypo+kny-1), &
+                 inTAUY(nxpo + knx-1, nypo+kny-1), &
+                 outTAUY(nxpo + knx-1, nypo+kny-1), &
+                 inPPA(nxpo + knx-1, nypo+kny-1), &
+                 outPPA(nxpo + knx-1, nypo+kny-1))
+
+        allocate(uf_UVEL(knx, kny), &
+                 uf_VVEL(knx, kny), &
+                 uf_TAUX(knx, kny), &
+                 uf_TAUY(knx, kny), &
+                 uf_PPA(knx, kny))
+
+        inUVEL(:,:) = 0
+        outUVEL(:,:) = 0
+        inVVEL(:,:) = 0
+        outVVEL(:,:) = 0
+        inTAUX(:,:) = 0
+        outTAUX(:,:) = 0
+        inTAUY(:,:) = 0
+        outTAUY(:,:) = 0
+        inPPA(:,:) = 0
+        outPPA(:,:) = 0
+
+        inUVEL(is:ie, js:je) = UVEL(:,:)
+        inVVEL(is:ie, js:je) = VVEL(:,:)
+        inTAUX(is:ie, js:je) = TAUX(:,:)
+        inTAUY(is:ie, js:je) = TAUY(:,:)
+        inPPA(is:ie, js:je) = PowerPerArea(:,:)
+
+        if (taskid .NE. MASTER) then   
+            strt_col = start_col +kny/2
+            ed_col = end_col +kny/2
+
+            !print *, 'before filtering at point'
+            do j = strt_col, ed_col
+                !write(*,'(A13 I3 I4 A3 I4)') 'at processor',taskid, j-strt_col+1,'of',ed_col-strt_col+1  
+                do i = knx/2 + 1, knx/2+1 + nxpo
+                    call filterAllFeildAtPoint(i,j)
+                enddo
+            enddo
+
+            row_size = nxpo + knx-1
+            data_size = row_size * (ed_col - strt_col +1)
+
+            dest = MASTER
+
+            call MPI_SEND( strt_col, 1, MPI_INTEGER, MASTER, startCol_tag + taskid, &
+            &                 MPI_COMM_WORLD, i_err )
+            !print *, 'from taskid',taskid,' send start_col'
+
+            call MPI_SEND( data_size, 1, MPI_INTEGER, MASTER, dataSize_tag + taskid, &
+            &                 MPI_COMM_WORLD, i_err )
+            !print *, 'from taskid',taskid,' send data size'
+
+            call MPI_SEND( outUVEL(1,strt_col), data_size, MPI_REAL, dest, &
+            & OL_UVEL_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            !print *, 'from taskid',taskid,' send outUVEL'
+
+            call MPI_SEND( outVVEL(1,strt_col), data_size, MPI_REAL, dest, &
+            & OL_VVEL_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            !print *, 'from taskid',taskid,' send outVVEL'
+
+            call MPI_SEND( outTAUX(1,strt_col), data_size, MPI_REAL, dest, &
+            & OL_TAUX_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            !print *, 'from taskid',taskid,' send outTAUX'
+
+            call MPI_SEND( outTAUY(1,strt_col), data_size, MPI_REAL, dest, &
+            & OL_TAUY_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            !print *, 'from taskid',taskid,' send outTAUY'
+
+            call MPI_SEND( outPPA(1,strt_col), data_size, MPI_REAL, dest, &
+            & OL_PPA_tag + taskid, MPI_COMM_WORLD, status, i_err )
+            !print *, 'from taskid',taskid,' send outPPA'
+
+            OL_UVEL(:,:) = taskid * 10
+            OL_VVEL(:,:) = taskid * 10
+            OL_TAUX(:,:) = taskid * 10
+            OL_TAUY(:,:) = taskid * 10
+            OL_PowerPerArea(:,:) = taskid * 10
+       
+        else
+            do source = 1, numworkers
+
+                call MPI_RECV( strt_col, 1, MPI_INTEGER, source, startCol_tag + source, &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv start_col'
+
+                call MPI_RECV( data_size, 1, MPI_INTEGER, source, dataSize_tag + source, &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv datasize'
+
+                call MPI_RECV( outUVEL(1,strt_col), data_size, MPI_REAL, source, &
+                & OL_UVEL_tag + source, MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv outUVEL'
+
+                call MPI_RECV( outVVEL(1,strt_col), data_size, MPI_REAL, source, &
+                & OL_VVEL_tag + source, MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv outVVEL'
+
+                call MPI_RECV( outTAUX(1,strt_col), data_size, MPI_REAL, source, &
+                & OL_TAUX_tag + source, MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv outTAUX'
+
+                call MPI_RECV( outTAUY(1,strt_col), data_size, MPI_REAL, source, &
+                & OL_TAUY_tag + source, MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv outTAUY'
+
+                call MPI_RECV( outPPA(1,strt_col), data_size, MPI_REAL, source, &
+                & OL_PPA_tag + source, MPI_COMM_WORLD, status, i_err )
+                !print *, 'from taskid', source,' recv outPPA'
+
+                !print *, 'RECEIVED from Source', source
+            
+            enddo
+
+            knx = size(kernel,1)
+            kny = size(kernel,2)
+
+            is = knx/2 +1
+            ie = nxpo + knx/2
+            js = kny/2 +1
+            je = nypo + kny/2
+
+            OL_UVEL(:,:) = outUVEL(is:ie, js:je)
+            OL_VVEL(:,:) = outVVEL(is:ie, js:je)
+            OL_TAUX(:,:) = outTAUX(is:ie, js:je)
+            OL_TAUY(:,:) = outTAUY(is:ie, js:je)
+            OL_PowerPerArea(:,:) = outPPA(is:ie, js:je)
+
+        endif
+
+        call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        DEALLOCATE(inUVEL, outUVEL, inVVEL, outVVEL, inTAUX, &
+                 & outTAUX, inTAUY, outTAUY, inPPA, outPPA)
+
+        DEALLOCATE(uf_UVEL, uf_VVEL, uf_TAUX, uf_TAUY, uf_PPA)
+
+        !PRINT *, "\n\n DEALLOCATED"
+
+    end subroutine
+
+    subroutine filterAllFeildAtPoint(index_i,index_j)
+        INTEGER(kind=i4), INTENT(IN) :: index_i, index_j
+        
+        INTEGER(kind=i4) :: knx, kny, is, ie, js, je
+        
+
+        knx = size(kernel,1)
+        kny = size(kernel,2)
+
+        is = index_i - knx/2
+        ie = index_i + knx/2
+
+        js = index_j - kny/2
+        je = index_j + kny/2
+
+        uf_UVEL(:,:) = inUVEL(is:ie,js:je)
+        uf_VVEL(:,:) = inVVEL(is:ie,js:je)
+        uf_TAUX(:,:) = inTAUX(is:ie,js:je)
+        uf_TAUY(:,:) = inTAUY(is:ie,js:je)
+        uf_PPA(:,:) = inPPA(is:ie,js:je)
+
+        ! outUVEL(index_i, index_j) = sum(uf_UVEL* kernel * dArea)/sum(kernel * dArea)
+        ! outVVEL(index_i, index_j) = sum(uf_VVEL* kernel * dArea)/sum(kernel * dArea)
+        ! outTAUX(index_i, index_j) = sum(uf_TAUX* kernel * dArea)/sum(kernel * dArea)
+        ! outTAUY(index_i, index_j) = sum(uf_TAUY* kernel * dArea)/sum(kernel * dArea)
+        ! outPPA(index_i, index_j) = sum(uf_PPA* kernel * dArea)/sum(kernel * dArea)
+
+        outUVEL(index_i, index_j) = inUVEL(index_i, index_j)
+        outVVEL(index_i, index_j) = inVVEL(index_i, index_j)
+        outTAUX(index_i, index_j) = inTAUX(index_i, index_j)
+        outTAUY(index_i, index_j) = inTAUY(index_i, index_j)
+        outPPA(index_i, index_j) = inPPA(index_i, index_j)
+
+    end subroutine
 
 end module filter

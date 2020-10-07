@@ -77,25 +77,31 @@ module fields
     end subroutine
 
 
-    subroutine init_workFields()
+    subroutine reset_workFields()
         if (ALLOCATED(UVEL)) then
             DEALLOCATE(Pressure, UVEL, VVEL, &
                        TAUX, TAUY, &
-                       PowerPerArea, &
-                       OL_UVEL, OL_VVEL, &
-                       OL_TAUX, OL_TAUY, &
-                       OL_PowerPerArea)
+                       PowerPerArea)
         endif
 
         allocate(Pressure(nxpo, nypo), &
                  UVEL(nxpo, nypo), VVEL(nxpo, nypo), &
                  TAUX(nxpo, nypo), TAUY(nxpo, nypo), &
-                 PowerPerArea(nxpo, nypo), &
-                 OL_UVEL(nxpo, nypo), OL_VVEL(nxpo, nypo), &
-                 OL_TAUX(nxpo, nypo), OL_TAUY(nxpo, nypo), &
-                 OL_PowerPerArea(nxpo, nypo))
+                 PowerPerArea(nxpo, nypo))
 
     end subroutine
+
+    subroutine reset_FilteredFields()
+        if (ALLOCATED(OL_UVEL)) then
+            DEALLOCATE(OL_UVEL, OL_VVEL, &
+                       OL_TAUX, OL_TAUY, &
+                       OL_PowerPerArea)
+        endif
+
+        allocate(OL_UVEL(nxpo, nypo), OL_VVEL(nxpo, nypo), &
+                 OL_TAUX(nxpo, nypo), OL_TAUY(nxpo, nypo), &
+                 OL_PowerPerArea(nxpo, nypo))
+    endsubroutine
 
     ! subroutine setOutputFields()
     !     REAL(kind=r8) :: MPPA(nxpo, nypo), EPPA(nxpo, nypo)

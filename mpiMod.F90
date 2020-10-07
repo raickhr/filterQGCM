@@ -6,7 +6,7 @@ module mpiMod
 
     integer :: i_err, taskid, numtasks, numworkers, msg_tag,  &
         & MASTER, source, dest, FROM_MASTER, FROM_WORKER, ERRORCODE, &
-        & startCol_tag, dataSize_tag, OL_UVEL_tag, OL_VVEL_tag, &
+        & startCol_tag, endCol_tag, dataSize_tag, OL_UVEL_tag, OL_VVEL_tag, &
         & OL_TAUX_tag, OL_TAUY_tag, OL_PPA_tag
 
     integer status(MPI_STATUS_SIZE)
@@ -26,6 +26,7 @@ module mpiMod
         FROM_WORKER =2
 
         startCol_tag = 1000
+        endCol_tag = 1100
         dataSize_tag = 2000
         OL_UVEL_tag = 10000
         OL_VVEL_tag = 20000

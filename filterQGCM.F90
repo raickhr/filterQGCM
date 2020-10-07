@@ -48,13 +48,12 @@ program filterQGCM
     !! initialize the output fields
     call init_outputOcnFields()
 
-
-    !! intialize the workFields
-    call init_workFields()
-
     do fileCounter =1, nInputFiles
         !!! loop over record dimnesion for a file
         do recDim = startRecCount, endRecCount
+            !! intialize the workFields
+            call reset_workFields()
+            
             if (taskid .EQ. MASTER ) then
                 call readInputOcnVars2D_P(inputLoc, &
                                           inputFileList(1), & 
@@ -108,23 +107,14 @@ program filterQGCM
 
                 if (taskid .EQ. MASTER ) then
                     workFilterLen = filterLengthList(filterCounter)
-                    write(*,'(A15,F4.0,A5)') 'Filtering at ', workFilterLen,' km'
+                    write(*,'(A15,F5.0,A5)') 'Filtering at ', workFilterLen,' km'
                     print*, 'Making kernel'
                 endif
                 call MPI_BCAST(workFilterLen, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
                 call MPI_BARRIER(MPI_COMM_WORLD, i_err)
                 !!! calculate kernel
                 call makeKernel(workFilterLen, 'P', ocnORatmGrid='O')
-                knx = size(kernel,1, kind=i4)
-                kny = size(kernel,2, kind=i4)
-
-                if (taskid .EQ. MASTER ) then !MASTER
-                    write(*,'(A15i4i4)') 'kernel size', knx, kny
-                    ! do dummmy =1, knx
-                    !     write(*,'(13F11.5)') kernel(dummmy, :)
-                    ! enddo
-                    print *, 'sum Kernel=', sum(kernel)
-                endif
+                
 
                 !print * , filterCounter, 'Made Kernel at', taskid
 
@@ -133,22 +123,25 @@ program filterQGCM
                     print *, 'Filtering ...'
                 endif
 
-                OL_UVEL(:,:) = 0
-                OL_VVEL(:,:) = 0
-                OL_TAUX(:,:) = 0
-                OL_TAUY(:,:) = 0
-                OL_PowerPerArea(:,:) = 0
-                
-                call getFilterFields(PowerPerArea, OL_PowerPerArea)
+                call reset_FilteredFields()
 
-                call getFilterFields(TAUX, OL_TAUX)
-                call getFilterFields(TAUY, OL_TAUY)
+                OL_UVEL(:,:) = 0.0
+                !call getFilterFields(UVEL(:,:), OL_UVEL(:,:))
 
-                call getFilterFields(UVEL, OL_UVEL)
-                call getFilterFields(VVEL, OL_VVEL)
+                OL_VVEL(:,:) = 0.0
+                !call getFilterFields(VVEL(:,:), OL_VVEL(:,:))
 
+                OL_TAUX(:,:) = 0.0
+                !call getFilterFields(TAUX(:,:), OL_TAUX(:,:))
 
-                !call getFilterFields()
+                OL_TAUY(:,:) = 0.0
+                !call getFilterFields(TAUY(:,:), OL_TAUY(:,:))
+
+                OL_PowerPerArea(:,:) = 0.0
+                !call getFilterFields(PowerPerArea(:,:), OL_PowerPerArea(:,:))
+       
+                call filterFields()
+
                 call MPI_BARRIER(MPI_COMM_WORLD, i_err)
 
                 if (taskid .EQ. MASTER ) then
