@@ -33,6 +33,7 @@ module fields
                 saveReadInputFields, &
                 saveInputFields, &
                 saveOutputFields, &
+                getPressureField, &
                 getInputFields, &
                 getOutputFields
 
@@ -168,20 +169,21 @@ module fields
     end subroutine
 
     subroutine saveOutputFields(nxpo, nypo, inUVEL, inVVEL, &
-                               inTAUX, inTAUY)
+                               inTAUX, inTAUY, inPPA)
 
         INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
     
         REAL(kind = r8), INTENT(IN) ::  inUVEL(nxpo, nypo), inVVEL(nxpo, nypo), &
-                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo)
+                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo), &
+                                        inPPA(nxpo, nypo)
 
         
         OL_UVEL(:,:) = inUVEL(:,:)
         OL_VVEL(:,:) = inVVEL(:,:)
         OL_TAUX(:,:) = inTAUX(:,:)
         OL_TAUY(:,:) = inTAUY(:,:)
-        OL_PowerPerArea = UVEL * TAUX + VVEL * TAUY 
-
+        OL_PowerPerArea(:,:) = inPPA(:,:)
+        
     end subroutine
 
 

@@ -1,7 +1,6 @@
 module configMod
     use kinds
     use constants
-    use gatherScatter
     use mpiMod
 
     implicit none
@@ -150,10 +149,12 @@ module configMod
         
         endif
 
-        call broadCastInt(nInputFiles, MASTER, err)
-        call broadCastInt(nFilterLength, MASTER, err)
-        call broadCastInt(startRecCount, MASTER, err)
-        call broadCastInt(endRecCount, MASTER, err)
+        call MPI_BCAST(nInputFiles, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nFilterLength, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(startRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(endRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+
+        call MPI_Barrier(MPI_COMM_WORLD, err)
 
         
     end subroutine makeConfig

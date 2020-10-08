@@ -12,7 +12,10 @@ module workDiv
                           end_col, &
                           ncol
 
-    PUBLIC :: get_start_col, get_end_col, get_ncol
+    PUBLIC :: divide_task, &
+              get_start_col, &
+              get_end_col, &
+              get_ncol
     contains
 
     subroutine divide_task(gridType, ocnORatmGrid)
@@ -27,9 +30,11 @@ module workDiv
 
         INTEGER(kind=i4) :: nx, ny, avg_col, extra_col, &
                             dest, source, numworkers, &
-                            err
+                            err, msg_tag
 
         numworkers = totalWorkers()
+
+        msg_tag = 0
 
         if (thisProc() .EQ. MASTER ) then
 
@@ -43,19 +48,19 @@ module workDiv
                 if ((ocnORatmGrid .EQ. 'A') .OR. &
                     (ocnORatmGrid .EQ. 'a')) then
                     if ( gridType .EQ. 'T') then 
-                        setAtmTgridXYsizeto(nx,ny)
+                        call setAtmTgridXYsizeto(nx,ny)
                     else
-                        setAtmPgridXYsizeto(nx,ny)
+                        call setAtmPgridXYsizeto(nx,ny)
                     endif
                 else
                     if ( gridType .EQ. 'T') then 
-                        setOcnTgridXYsizeto(nx,ny)
+                        call setOcnTgridXYsizeto(nx,ny)
                     else
-                        setOcnPgridXYsizeto(nx,ny)
+                        call setOcnPgridXYsizeto(nx,ny)
                     endif
                 endif
             else
-                setOcnPgridXYsizeto(nx,ny)
+                call setOcnPgridXYsizeto(nx,ny)
             endif
 
             extra_col = mod(ny,numworkers)
@@ -72,11 +77,11 @@ module workDiv
                 end_col = start_col + ncol -1
             
                 call MPI_SEND( start_col, 1, MPI_INTEGER, dest, msg_tag + 1, &
-                               MPI_COMM_WORLD, i_err )
+                               MPI_COMM_WORLD, err )
                 call MPI_SEND( end_col, 1, MPI_INTEGER, dest, msg_tag + 2, &
-                               MPI_COMM_WORLD, i_err )
+                               MPI_COMM_WORLD, err )
                 call MPI_SEND( ncol, 1, MPI_INTEGER, dest, msg_tag + 3, &
-                               MPI_COMM_WORLD, i_err )
+                               MPI_COMM_WORLD, err )
                 
                 print *,'proc, start_col, end_col, ncol', dest, start_col, end_col, ncol
                 
@@ -92,13 +97,13 @@ module workDiv
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             
             call MPI_RECV( start_col, 1, MPI_INTEGER, MASTER, &
-                            msg_tag + 1, MPI_COMM_WORLD, status, i_err )
+                            msg_tag + 1, MPI_COMM_WORLD, status, err )
 
             call MPI_RECV( end_col, 1, MPI_INTEGER, MASTER, &
-                            msg_tag + 2, MPI_COMM_WORLD, status, i_err )
+                            msg_tag + 2, MPI_COMM_WORLD, status, err )
 
             call MPI_RECV( ncol, 1, MPI_INTEGER, MASTER, &
-                            msg_tag + 3, MPI_COMM_WORLD, status, i_err )
+                            msg_tag + 3, MPI_COMM_WORLD, status, err )
 
             ! write(*,'(A14 I3 A11 I2 A9 I2 A7 I2)') &
             ! 'at processor ',taskid, ' start_col ', start_col, &

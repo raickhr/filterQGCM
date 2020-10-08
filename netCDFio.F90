@@ -127,7 +127,7 @@ module netCDFio
 
         ierr = nf_close(file_id)
 
-        call saveReadInputFields(tempField2D(:,:,1), &
+        call saveReadInputFields(nxpo, nypo, tempField2D(:,:,1), &
                                  tempField2D(:,:,2), &
                                  tempField2D(:,:,3))
 

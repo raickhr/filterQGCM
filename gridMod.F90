@@ -3,7 +3,6 @@ module gridMod
     
     use kinds
     use configMod
-    use gatherScatter
     use mpiMod
     
     implicit none
@@ -46,8 +45,8 @@ module gridMod
                         nza,         &   !! atm number of midlayer depths
                         nzia           !! atm number of interfaces
 
-    REAL(kind=r8) :: prevTimeVal, timeVal
-    CHARACTER(len = char_len_short) :: timeUnits 
+    REAL(kind=r8):: prevTimeVal, timeVal
+    CHARACTER(len = char_len_short), PUBLIC :: timeUnits 
 
     PUBLIC :: init_grid, &
               setOcnPgridXYsizeto, &
@@ -55,7 +54,9 @@ module gridMod
               setAtmPgridXYsizeto, &
               setAtmTgridXYsizeto, &
               saveReadXpoYpo, &
-              getDxpo, getDypo
+              getDxpo, getDypo, &
+              getPrevTimeVal, getCurrTimeVal, &
+              setPrevTimeVal, setCurrTimeVal
 
 
     contains
@@ -76,15 +77,14 @@ module gridMod
         prevTimeVal = -111.00
         timeVal = -111.00
 
-        call broadCastInt(nxto, MASTER, err )
-        call broadCastInt(nyto, MASTER, err )
-        call broadCastInt(nzo, MASTER, err )
-
-        call broadCastInt(nxta, MASTER, err )
-        call broadCastInt(nyta, MASTER, err )
-        call broadCastInt(nza, MASTER, err )
-
-        call syncProcs(err)
+        call MPI_BCAST(nxto, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nyto, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nzo, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nxta, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nyta, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nza, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        
+        call MPI_Barrier(MPI_COMM_WORLD, err)
 
         nxpo = nxto+1 
         nypo = nyto+1
@@ -149,6 +149,35 @@ module gridMod
         REAL(kind = r8) :: returnVal
         returnVal = ypo(2) - ypo(1)
     end function
+
+    function getPrevTimeVal() result(returnVal)
+        REAL(kind = r8) :: returnVal
+        returnVal = prevTimeVal
+    end function
+
+    function getCurrTimeVal() result(returnVal)
+        REAL(kind = r8) :: returnVal
+        returnVal = timeVal
+    end function
+
+    subroutine setPrevTimeVal( inTimeVal) 
+        REAL(kind = r8), INTENT(IN) :: inTimeVal
+        INTEGER(kind = i4) :: err
+        prevTimeVal = inTimeVal
+
+        call MPI_BCAST(prevTimeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, err)
+        call MPI_Barrier(MPI_COMM_WORLD, errorCode)
+    end subroutine
+
+    subroutine setCurrTimeVal( inTimeVal) 
+        REAL(kind = r8), INTENT(IN) :: inTimeVal
+        INTEGER(kind = i4) :: err
+        timeVal = inTimeVal
+
+        call MPI_BCAST(prevTimeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, err)
+        call MPI_Barrier(MPI_COMM_WORLD, errorCode)
+    end subroutine
+
 
 
     

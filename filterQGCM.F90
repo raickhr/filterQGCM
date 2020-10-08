@@ -11,6 +11,9 @@ program filterQGCM
     use workDiv    
 
     implicit none
+
+    INTEGER(kind = i4) :: fileCounter, recDim, flenCounter
+    REAL(kind = r8) :: prevTimeVal, currTimeVal
     ! initialize MPI
     call startMPI()
 
@@ -48,76 +51,39 @@ program filterQGCM
                 
             endif
 
-            call MPI_BCAST(xpo, nxpo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(ypo, nypo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(timeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+            call bcastVarsAfterReadingInputFile()
+
+            prevTimeVal = getPrevTimeVal()       !! this sets different time val to different processors
+            call setPrevTimeVal(prevTimeVal)     !! setting same timeVel to all processors
             
-            ! print *,'at taskid',taskid,' received xpo, ypo, timeVal'
-
-            call MPI_BARRIER(MPI_COMM_WORLD, i_err)
-
-            msgSize = nxpo * nypo
-
-            ! print *,'at taskid',taskid,'nxpo, nypo', nxpo, nypo
-
-            !!!! broadcast ugos, vgos, taux, tauy, 
-            call MPI_BCAST(UVEL, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(VVEL, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(TAUX, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(TAUY, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-            call MPI_BCAST(PowerPerArea, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-
-            ! print *,'at taskid',taskid,'received UVEL, VVEL, TAUX, TAUY, PowerPerArea'
-
-            call MPI_BARRIER(MPI_COMM_WORLD, i_err)
-
-            if (prevTimeVal == timeVal) then
-                print *, 'Found repeated time at rec count:',recDim
+            currTimeVal = getCurrTimeVal()       !! this sets different time val to different processors
+            call setCurrTimeVal(currTimeVal)     !! setting same timeVal to all processors
+            
+            if (prevTimeVal == currTimeVal) then
+                if (thisProc() .EQ. MASTER) then
+                    print *, 'Found repeated time at rec count:',recDim
+                endif
                 continue
             else
-                prevTimeVal = timeVal
+                call setPrevTimeVal(currTimeVal)
             endif
 
-            do filterCounter = 1, nFilterLength
+            do flenCounter = 1, numFilterLength()
 
                 if (taskid .EQ. MASTER ) then
-                    workFilterLen = filterLengthList(filterCounter)
-                    write(*,'(A15,F5.0,A5)') 'Filtering at ', workFilterLen,' km'
+                    write(*,'(A15,F5.0,A5)') 'Filtering at ', getFilterLenNo(flenCounter),' km'
                     print*, 'Making kernel'
                 endif
-                call MPI_BCAST(workFilterLen, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-                call MPI_BARRIER(MPI_COMM_WORLD, i_err)
                 !!! calculate kernel
-                call makeKernel(workFilterLen, 'P', ocnORatmGrid='O')
-                
-
-                !print * , filterCounter, 'Made Kernel at', taskid
+                call makeKernel(getFilterLenNo(flenCounter), 'P', ocnORatmGrid='O')
+                !print * , flenCounter, 'Made Kernel at', taskid
 
                 !!!! filter ugos, vgos, taux, tauy, PowerPerArea
                 if (taskid == MASTER) then
                     print *, 'Filtering ...'
                 endif
 
-                call reset_FilteredFields()
-
-                OL_UVEL(:,:) = 0.0
-                !call getFilterFields(UVEL(:,:), OL_UVEL(:,:))
-
-                OL_VVEL(:,:) = 0.0
-                !call getFilterFields(VVEL(:,:), OL_VVEL(:,:))
-
-                OL_TAUX(:,:) = 0.0
-                !call getFilterFields(TAUX(:,:), OL_TAUX(:,:))
-
-                OL_TAUY(:,:) = 0.0
-                !call getFilterFields(TAUY(:,:), OL_TAUY(:,:))
-
-                OL_PowerPerArea(:,:) = 0.0
-                !call getFilterFields(PowerPerArea(:,:), OL_PowerPerArea(:,:))
-       
                 call filterFields()
-
-                call MPI_BARRIER(MPI_COMM_WORLD, i_err)
 
                 if (taskid .EQ. MASTER ) then
                     !!!! update the output field
