@@ -3,6 +3,7 @@ module filter
     use gridMod
     use fields
     use workDiv
+    use mpiMod
 
     implicit none
     PRIVATE
@@ -32,6 +33,8 @@ module filter
 
     INTEGER(kind = i4) :: knx, kny
 
+    PUBLIC :: makeKernel, filterFields
+
 
     contains
 
@@ -42,25 +45,29 @@ module filter
         REAL(kind = r8) :: dx, dy
 
         INTEGER(kind=i4) :: i, j, &  !! iterators
+                            i_err, & !! error status
                             n  !! dummy number
 
         real(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: kX2D, kY2D, &
                                                         distFromCenter, &
                                                         ell_by2, weight
 
+    
         if (ALLOCATED(kernel)) then
             DEALLOCATE(kernel)
         endif
 
-        dx = getDxpo()
-        dy = getDypo()
+        if (thisProc() == MASTER) then 
+            dx = getDxpo()
+            dy = getDypo()
+        endif
 
         call MPI_BCAST(filterLength, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(dx, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(dy, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
 
         call MPI_BARRIER(MPI_COMM_WORLD, i_err)
-                
+        
 
         ! if (PRESENT(ocnORatmGrid)) then
         !     if ((ocnORatmGrid .EQ. 'A') .OR. &
@@ -91,13 +98,8 @@ module filter
 
         dArea = dx*dy
 
-        !print *,'in make kernel dx, dy= ', dx, dy
-
         knx = NINT(((filterLength/2.0)/dx)+1) * 2 + 1
-        kny = NINT(((filterLength/2.0)/dy)+1) * 2 + 1
-
-        print *,'in proc',thisProc(),'kernel knx, kny= ', knx, kny
-        
+        kny = NINT(((filterLength/2.0)/dy)+1) * 2 + 1        
 
         allocate(distFromCenter(knx, kny), &
                  kernel(knx, kny), &
@@ -142,6 +144,7 @@ module filter
                              i, j, &
                              nxpo, nypo, &
                              is, ie, js, je, &
+                             dest, source, &
                              startCol_tag, &
                              dataSize_tag, &
                              OL_UVEL_tag,  &
@@ -188,8 +191,8 @@ module filter
                             TAUX, TAUY, PPA)
 
 
-        startCol_ta = 1000
-        dataSize_ta = 2000
+        startCol_tag = 1000
+        dataSize_tag = 2000
         OL_UVEL_tag = 3000
         OL_VVEL_tag = 4000
         OL_TAUX_tag = 5000
@@ -213,9 +216,13 @@ module filter
         inTAUY(is:ie, js:je) = TAUY(:,:)
         inPPA(is:ie, js:je) = PPA(:,:)
 
+        ! if (thisProc() == MASTER) then
+        !     print *,'before filtering TAUX(500,600)', TAUX(500,600)
+        ! endif
+
         if (thisProc() .NE. MASTER) then   
-            strt_col = start_col +kny/2
-            ed_col = end_col +kny/2
+            strt_col = get_start_col() +kny/2
+            ed_col = get_end_col() +kny/2
 
             !print *, 'before filtering at point'
             do j = strt_col, ed_col
@@ -259,7 +266,7 @@ module filter
             !print *, 'from thisProc()',thisProc(),' send outPPA'
        
         else
-            do source = 1, numworkers
+            do source = 1, totalWorkers()
 
                 call MPI_RECV( strt_col, 1, MPI_INTEGER, source, startCol_tag + source, &
                 &                 MPI_COMM_WORLD, status, i_err )
@@ -305,6 +312,10 @@ module filter
                                   outTAUX(is:ie, js:je), &
                                   outTAUY(is:ie, js:je), &
                                   outPPA(is:ie, js:je))
+
+            ! if (thisProc() == MASTER) then
+            !     print *,'after filtering TAUX(500,600)', outTAUX(is -1 + 500, js -1 +600)
+            ! endif
 
         endif
 

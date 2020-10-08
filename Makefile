@@ -3,7 +3,7 @@ FFLAGS=`nf-config --fflags`
 FLIBS=`nf-config --flibs`
 
 
-OBJS = configMod.o fields.o gridMod.o kinds.o ncdf_wrapper.o netCDFio.o filter.o mpiMod.o workDiv.o operators.o constants.o
+OBJS = configMod.o fields.o gridMod.o kinds.o ncdf_wrapper.o netCDFio.o filter.o mpiMod.o workDiv.o operators.o constants.o gatherScatter.o
 
 filterQGCM: $(OBJS)
 	$(FC) $(FLIBS) $(OBJS) $@.F90 -o $@ 
@@ -17,7 +17,7 @@ constants.o: kinds.o
 mpiMod.o: mpiMod.F90 kinds.o
 	$(FC) -c mpiMod.F90
 
-filter.o: filter.F90 fields.o kinds.o gridMod.o workDiv.o
+filter.o: fields.o kinds.o gridMod.o workDiv.o mpiMod.o
 	$(FC) -c filter.F90
 
 netCDFio.o: kinds.o gridMod.o fields.o ncdf_wrapper.o
@@ -29,7 +29,7 @@ ncdf_wrapper.o : ncdf_wrapper.F90
 gridMod.o: kinds.o configMod.o mpiMod.o
 	$(FC) -c gridMod.F90
 
-configMod.o: kinds.o constants.o mpiMod.o gatherScatter.o
+configMod.o: kinds.o constants.o mpiMod.o
 	$(FC) -c configMod.F90
 
 fields.o: kinds.o gridMod.o configMod.o 
@@ -41,7 +41,7 @@ workDiv.o: gridMod.o mpiMod.o gatherScatter.o
 operators.o: kinds.o constants.o gridMod.o
 	$(FC) -c operators.F90
 
-gatherScatter.o: kinds.o mpiMod.o
+gatherScatter.o: kinds.o mpiMod.o fields.o
 	$(FC) -c gatherScatter.F90
 
 clean:

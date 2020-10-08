@@ -54,6 +54,7 @@ module gridMod
               setAtmPgridXYsizeto, &
               setAtmTgridXYsizeto, &
               saveReadXpoYpo, &
+              getXpoYpo, &
               getDxpo, getDypo, &
               getPrevTimeVal, getCurrTimeVal, &
               setPrevTimeVal, setCurrTimeVal
@@ -133,12 +134,17 @@ module gridMod
     end subroutine 
 
     subroutine saveReadXpoYpo(inxpo, inypo)
-
         REAL(kind = r8), INTENT(IN) :: inxpo(nxpo), inypo(nypo)
         xpo(:) = inxpo(:)
         ypo(:) = inypo(:)
-
     end subroutine
+
+    subroutine getXpoYpo(outXpo, outYpo)
+        REAL(kind = r8), INTENT(OUT) :: outXpo(nxpo), outYpo(nypo)
+        outXpo(:) = xpo(:)
+        outYpo(:) = ypo(:)
+    end subroutine
+
 
     function getDxpo() result(returnVal)
         REAL(kind = r8) :: returnVal
@@ -164,18 +170,12 @@ module gridMod
         REAL(kind = r8), INTENT(IN) :: inTimeVal
         INTEGER(kind = i4) :: err
         prevTimeVal = inTimeVal
-
-        call MPI_BCAST(prevTimeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, err)
-        call MPI_Barrier(MPI_COMM_WORLD, errorCode)
     end subroutine
 
     subroutine setCurrTimeVal( inTimeVal) 
         REAL(kind = r8), INTENT(IN) :: inTimeVal
         INTEGER(kind = i4) :: err
         timeVal = inTimeVal
-
-        call MPI_BCAST(prevTimeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, err)
-        call MPI_Barrier(MPI_COMM_WORLD, errorCode)
     end subroutine
 
 

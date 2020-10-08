@@ -22,8 +22,8 @@ module gatherScatter
     end subroutine
 
     subroutine broadCastFloat(fltVar, sourceProc, errorCode)
-        REAL(kind = r4), INTENT(IN) :: fltVar, sourceProc
-        INTEGER(kind = i4), INTENT(OUT) :: errorCode
+        REAL(kind = r4), INTENT(IN) :: fltVar
+        INTEGER(kind = i4), INTENT(OUT) :: sourceProc, errorCode
         call MPI_BCAST(fltVar, 1, MPI_REAL , sourceProc, MPI_COMM_WORLD, errorCode)
     end subroutine
 
@@ -36,7 +36,7 @@ module gatherScatter
     subroutine bcastVarsAfterReadingInputFile(i_err)
         INTEGER(kind = i4), INTENT(OUT) :: i_err
 
-        INTEGER(kind = i4) :: nxpo, nypo
+        INTEGER(kind = i4) :: nxpo, nypo, msgSize
 
         REAL(kind = r8) :: timeVal
 
@@ -55,8 +55,10 @@ module gatherScatter
         call getInputFields(nxpo, nypo, UVEL, VVEL, &
                                TAUX, TAUY, PPA)
 
-        ! call MPI_BCAST(xpo, nxpo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-        ! call MPI_BCAST(ypo, nypo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        call getXpoYpo(xpo, ypo)
+
+        call MPI_BCAST(xpo, nxpo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        call MPI_BCAST(ypo, nypo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(timeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         
         ! print *,'at taskid',taskid,' received xpo, ypo, timeVal'
@@ -72,11 +74,16 @@ module gatherScatter
         call MPI_BCAST(VVEL, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(TAUX, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(TAUY, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-        call MPI_BCAST(PowerPerArea, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
 
         ! print *,'at taskid',taskid,'received UVEL, VVEL, TAUX, TAUY, PowerPerArea'
 
         call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        call saveInputFields(nxpo, nypo, UVEL, VVEL, TAUX, TAUY)
+        call saveReadXpoYpo(xpo, ypo)
+
+        DEALLOCATE(xpo, ypo, &
+                   UVEL, VVEL, TAUX, TAUY, PPA)
     end subroutine
 
     

@@ -1,1 +1,0 @@
-mpif90 -c mpiMod.F90

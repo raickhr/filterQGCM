@@ -36,6 +36,8 @@ module netCDFio
                                        xpo(:), &
                                        ypo(:)
 
+        real(kind = r8) :: timeVal
+
         call setOcnPgridXYsizeto(nxpo, nypo)
         k_level = 1
 
@@ -82,6 +84,7 @@ module netCDFio
         ierr = nf_get_vara_real(file_id,var_id,(/recDim_count/),(/1/),timeVal)
         if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_vara_real: time Val')
 
+        call setCurrTimeVal(timeVal)
         
         num_of_var = numVarsToRead()
 
@@ -127,6 +130,8 @@ module netCDFio
 
         ierr = nf_close(file_id)
 
+        ! print *, 'after reading TAUX(500,600)', tempField2D(500,600,2) * 1000  !! * density
+
         call saveReadInputFields(nxpo, nypo, tempField2D(:,:,1), &
                                  tempField2D(:,:,2), &
                                  tempField2D(:,:,3))
@@ -138,183 +143,207 @@ module netCDFio
 
     end subroutine
 
-    ! subroutine writeOcnOutPut_Pfields(outPath,  &
-    !                                outFileName)
+    subroutine writeOcnOutPut_Pfields(recDim, filterLen)
+      ! outPath,  &
+      !                              outFileName)
+      INTEGER(kind = i4), INTENT(IN) :: recDim
+      REAL(kind = r4), INTENT(IN) :: filterLen 
 
-    !   integer:: counter
-    !   character(len=*),intent(in)::outPath, outFileName
+      CHARACTER(len = 4 ) :: str_recDim, str_filterLen
 
-    !   CHARACTER(len=char_len) :: filename, &
-    !                              varName, &
-    !                              varLongName, &
-    !                              varUnits
+      CHARACTER (len = char_len_long) :: outPath, fileWithPath
 
-    !   integer :: status
-    !   integer :: f_id, &
-    !              x_dim_id, &
-    !              y_dim_id, &
-    !              time_dim_id, &
-    !              coord_ids(3), &
-    !              xpo_id, &
-    !              ypo_id, &
-    !              time_id
+      CHARACTER(len=char_len) :: filename, &
+                                 varName, &
+                                 varLongName, &
+                                 varUnits
 
-    !   integer ::field_id(7)
-    !   REAL(kind=r8):: wfield(nxpo, nypo, 7)
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err
 
-    !   filename = trim(adjustl(outPath))//'/'//&
-    !              trim(adjustl(outFileName))
+      integer(kind = i4) :: f_id, &
+                            x_dim_id, &
+                            y_dim_id, &
+                            time_dim_id, &
+                            coord_ids(3), &
+                            xpo_id, &
+                            ypo_id, &
+                            time_id
 
-    !   filename = trim(adjustl(filename))
+      integer ::field_id(7)
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield
 
-    !   !-------------------------------------------------------------------
-    !   !  open netcdf file
-    !   !-------------------------------------------------------------------
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
 
-    !   ! print *,'Opening to write ...',filename
-   	!   status = nf_create(filename, nf_clobber, f_id)
-   	!   if (status /= nf_noerr) stop 'at create file'
+      REAL(kind=r8) :: timeVal
 
-    !   !-------------------------------------------------------------------
-    !   !  define dimensions
-    !   !-------------------------------------------------------------------
-    !   ! print *, 'Defining dimensions ...'
+      call setOcnPgridXYsizeto(nxpo,nypo)
 
-    !   status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
-    !   if (status /= nf_noerr) stop 'at def x_dim'
+      ALLOCATE(wfield(nxpo, nypo, 7), xpo(nxpo), ypo(nypo))
 
-    !   status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
-    !   if (status /= nf_noerr) stop 'at def y_dim'
+      call getXpoYpo(xpo(:), ypo(:))
 
-    !   status = nf_def_dim(f_id, 'time', 1, time_dim_id)
-    !   if (status /= nf_noerr) stop 'at def y_dim'
+      call getOutputFields(nxpo, nypo, wfield(:,:,1), wfield(:,:,2), &
+                                     wfield(:,:,3), wfield(:,:,4), &   
+                                     wfield(:,:,5))
 
-    !   ! print *, 'Dimensions defined'
+      wfield(:,:,6) = wfield(:,:,1)*wfield(:,:,3) + wfield(:,:,2) * wfield(:,:,4)
+      wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
 
-    !   coord_ids(1)=x_dim_id
-    !   coord_ids(2)=y_dim_id
-    !   coord_ids(3)=time_dim_id
+      timeVal = getCurrTimeVal()
+
+      !if (thisProc() == MASTER) then
+      !        print *,'before writing xpo(500), ypo(500)', xpo(500), ypo(500)
+      !        print *,'before writing TAUX(500,600)', wfield(500,600,3)
+      !endif
+
+      write(str_recDim,'(i4.4)') recDim
+      write(str_filterLen,'(i4.4)') int(filterLen)
+
+      filename = 'recNo_'//trim(str_recDim)//'.filterLen_'//trim(str_filterLen)//'.nc'
+
+      outPath = getOutputLoc()
+
+      fileWithPath = trim(adjustl(outPath))//'/'//&
+                 trim(adjustl(filename))
+
+      fileWithPath = trim(adjustl(fileWithPath))
+
+      !-------------------------------------------------------------------
+      !  open netcdf file
+      !-------------------------------------------------------------------
+
+      ! print *,'Opening to write ...',filename
+   	  nf_status = nf_create(fileWithPath, nf_clobber, f_id)
+   	  if (nf_status /= nf_noerr) stop 'at create file'
+
+      !-------------------------------------------------------------------
+      !  define dimensions
+      !-------------------------------------------------------------------
+      ! print *, 'Defining dimensions ...'
+
+      nf_status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def x_dim'
+
+      nf_status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      nf_status = nf_def_dim(f_id, 'time', 1, time_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      ! print *, 'Dimensions defined'
+
+      coord_ids(1)=x_dim_id
+      coord_ids(2)=y_dim_id
+      coord_ids(3)=time_dim_id
 
 
-    !   ! print *,''
-    !   ! print *, 'Defining field variable'
+      ! print *,''
+      ! print *, 'Defining field variable'
 
-    !   status = nf_def_var(f_id, &
-    !                       'xpo', &
-    !                       nf_float, 1, coord_ids(1), &
-    !                       xpo_id)
-    !   if (status /= nf_noerr) stop 'at field var def: xpo'
+      nf_status = nf_def_var(f_id, &
+                          'xpo', &
+                          nf_float, 1, coord_ids(1), &
+                          xpo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: xpo'
 
-    !   status = nf_put_att_text(f_id, &
-    !                            xpo_id, &
-    !                            "units",len("km") , &
-    !                             "km" )
-    !   if (status /= nf_noerr) stop 'at put field attribute units: xpo'
+      nf_status = nf_put_att_text(f_id, &
+                               xpo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: xpo'
 
-    !   status = nf_def_var(f_id, &
-    !                       'ypo', &
-    !                       nf_float, 1, coord_ids(2), &
-    !                       ypo_id)
-    !   if (status /= nf_noerr) stop 'at field var def: ypo'
+      nf_status = nf_def_var(f_id, &
+                          'ypo', &
+                          nf_float, 1, coord_ids(2), &
+                          ypo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: ypo'
 
-    !   status = nf_put_att_text(f_id, &
-    !                            ypo_id, &
-    !                            "units",len("km") , &
-    !                             "km" )
-    !   if (status /= nf_noerr) stop 'at put field attribute units: ypo'
+      nf_status = nf_put_att_text(f_id, &
+                               ypo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: ypo'
 
-    !   status = nf_def_var(f_id, &
-    !                       'time', &
-    !                       nf_float, 1, coord_ids(3), &
-    !                       time_id)
-    !   if (status /= nf_noerr) stop 'at field var def: time'
+      nf_status = nf_def_var(f_id, &
+                          'time', &
+                          nf_float, 1, coord_ids(3), &
+                          time_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: time'
 
-    !   status = nf_put_att_text(f_id, &
-    !                            time_id, &
-    !                            "units",len(trim(adjustl(timeUnits))) , &
-    !                             timeUnits )
-    !   if (status /= nf_noerr) stop 'at put field attribute units: time'
+      nf_status = nf_put_att_text(f_id, &
+                               time_id, &
+                               "units",len(trim(adjustl(timeUnits))) , &
+                                timeUnits )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: time'
         
 
-    !   do counter = 1, 7
+      do counter = 1, 7
 
-    !     varName = trim(adjustl(output2DOcnFields(counter)%info%fieldName))
-    !     varLongName = trim(adjustl(output2DOcnFields(counter)%info%longName))
-    !     varUnits = trim(adjustl(output2DOcnFields(counter)%info%units))
+        varName = trim(adjustl(output2DOcnFields(counter)%fieldName))
+        varLongName = trim(adjustl(output2DOcnFields(counter)%longName))
+        varUnits = trim(adjustl(output2DOcnFields(counter)%units))
 
-    !     status = nf_def_var(f_id, &
-    !                         varName, &
-    !                         nf_float, 3, coord_ids(1:3), &
-    !                         field_id(counter))
-    !     if (status /= nf_noerr) stop 'at field var def'
+        nf_status = nf_def_var(f_id, &
+                            varName, &
+                            nf_float, 3, coord_ids(1:3), &
+                            field_id(counter))
+        if (nf_status /= nf_noerr) stop 'at field var def'
 
-    !     status = nf_put_att_text(f_id, &
-    !                              field_id(counter), &
-    !                              "units", len(trim(adjustl(varUnits))), &
-    !                               varUnits )
-    !     if (status /= nf_noerr) stop 'at put field attribute units'
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "units", len(trim(adjustl(varUnits))), &
+                                  varUnits )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units'
 
-    !     status = nf_put_att_text(f_id, &
-    !                              field_id(counter), &
-    !                              "long_name", len(trim(adjustl(varLongName))), &
-    !                              varLongName)                         
-    !     if (status /= nf_noerr) stop 'at put field attribute long_name'
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "long_name", len(trim(adjustl(varLongName))), &
+                                 varLongName)                         
+        if (nf_status /= nf_noerr) stop 'at put field attribute long_name'
 
 
 
-    !   enddo ! define fields
+      enddo ! define fields
 
-    !   status = nf_enddef(f_id)
-    !   if (status /= nf_noerr) stop 'at enddef'
+      nf_status = nf_enddef(f_id)
+      if (nf_status /= nf_noerr) stop 'at enddef'
 
-    !   !print *, 'Defining variables SUCCESS...'
+      !print *, 'Defining variables SUCCESS...'
 
-    !   !-------------------------------------------------------------------
-    !   !  start writing the file
-    !   !-------------------------------------------------------------------
-    !   status = nf_put_var(f_id, &
-    !                       xpo_id, &
-    !                       xpo)
+      !-------------------------------------------------------------------
+      !  start writing the file
+      !-------------------------------------------------------------------
+      nf_status = nf_put_var(f_id, &
+                          xpo_id, &
+                          xpo)
 
-    !   if (status /= nf_noerr) stop 'at writing xpo'
+      if (nf_status /= nf_noerr) stop 'at writing xpo'
 
-    !   status = nf_put_var(f_id, &
-    !                       ypo_id, &
-    !                       ypo)
-    !     if (status /= nf_noerr) stop 'at writing ypo'
+      nf_status = nf_put_var(f_id, &
+                          ypo_id, &
+                          ypo)
+        if (nf_status /= nf_noerr) stop 'at writing ypo'
 
-    !   status = nf_put_var(f_id, &
-    !                       time_id, &
-    !                       timeVal )
-    !     if (status /= nf_noerr) stop 'at writing timeVal'
+      nf_status = nf_put_var(f_id, &
+                          time_id, &
+                          timeVal )
+        if (nf_status /= nf_noerr) stop 'at writing timeVal'
 
-    ! ! print *, 'xpo ypo and time written ... '
-
-    ! if (taskid == MASTER) then
-    !   wfield(:,:,1) = OL_UVEL
-    !   wfield(:,:,2) = OL_VVEL
-    !   wfield(:,:,3) = OL_TAUX
-    !   wfield(:,:,4) = OL_TAUY
-    !   wfield(:,:,5) = OL_PowerPerArea
-    !   wfield(:,:,6) = OL_TAUX * OL_UVEL + OL_TAUY * OL_VVEL
-    !   wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
-
-    ! endif
+    ! print *, 'xpo ypo and time written ... '
     
+      do counter = 1, 7
+        nf_status = nf_put_var(f_id, &
+                            field_id(counter), &
+                            ! (/1,1,1/), (/nxpo, nypo, 1/), &
+                             wfield(:,:,counter))
+        if (nf_status /= nf_noerr) stop 'at put var'
+      enddo ! write feilds
 
-    !   do counter = 1, 7
-    !     status = nf_put_var(f_id, &
-    !                         field_id(counter), &
-    !                         ! (/1,1,1/), (/nxpo, nypo, 1/), &
-    !                          wfield(:,:,counter))
-    !     if (status /= nf_noerr) stop 'at put var'
-    !   enddo ! write feilds
 
+      print *, 'Written file ', trim(fileWithPath) 
+      nf_status = nf_close(f_id)
+        if (nf_status /= nf_noerr) stop 'at close'
 
-    !   print *, 'Written file ', filename 
-    !   status = nf_close(f_id)
-    !     if (status /= nf_noerr) stop 'at close'
-
-    ! end subroutine
+    end subroutine
 
 end module netCDFio

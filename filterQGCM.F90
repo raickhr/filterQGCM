@@ -8,12 +8,13 @@ program filterQGCM
     use mpiMod
     use netCDFio
     use operators
-    use workDiv    
+    use workDiv
+    use gatherScatter    
 
     implicit none
 
-    INTEGER(kind = i4) :: fileCounter, recDim, flenCounter
-    REAL(kind = r8) :: prevTimeVal, currTimeVal
+    INTEGER(kind = i4) :: fileCounter, recDim, flenCounter, errorCode
+    REAL(kind = r8) :: prevTimeVal, currTimeVal, filterLength
     ! initialize MPI
     call startMPI()
 
@@ -51,12 +52,14 @@ program filterQGCM
                 
             endif
 
-            call bcastVarsAfterReadingInputFile()
-
+            call bcastVarsAfterReadingInputFile(errorCode)
+            
             prevTimeVal = getPrevTimeVal()       !! this sets different time val to different processors
+            call broadCastFloat(prevTimeVal,MASTER,errorCode)     
             call setPrevTimeVal(prevTimeVal)     !! setting same timeVel to all processors
             
             currTimeVal = getCurrTimeVal()       !! this sets different time val to different processors
+            call broadCastFloat(currTimeVal,MASTER,errorCode)     
             call setCurrTimeVal(currTimeVal)     !! setting same timeVal to all processors
             
             if (prevTimeVal == currTimeVal) then
@@ -70,31 +73,36 @@ program filterQGCM
 
             do flenCounter = 1, numFilterLength()
 
-                if (taskid .EQ. MASTER ) then
-                    write(*,'(A15,F5.0,A5)') 'Filtering at ', getFilterLenNo(flenCounter),' km'
+                
+                
+                if (thisProc() .EQ. MASTER ) then
+                    filterLength = getFilterLenNo(flenCounter)
+                    write(*,'(A15,F5.0,A5)') 'Filtering at ', filterLength,' km'
                     print*, 'Making kernel'
                 endif
+                call broadCastFloat(filterLength, MASTER, errorCode)
+
+                call syncProcs(errorCode)
+
+                if (thisProc() .EQ. MASTER) then 
+                    print *, 'before making kernel'
+                endif
+
                 !!! calculate kernel
-                call makeKernel(getFilterLenNo(flenCounter), 'P', ocnORatmGrid='O')
+                call makeKernel(filterLength, 'P', ocnORatmGrid='O')
                 !print * , flenCounter, 'Made Kernel at', taskid
 
                 !!!! filter ugos, vgos, taux, tauy, PowerPerArea
-                if (taskid == MASTER) then
+                if (thisProc() == MASTER) then
                     print *, 'Filtering ...'
                 endif
 
                 call filterFields()
 
-                if (taskid .EQ. MASTER ) then
-                    !!!! update the output field
-                    !call setOutputFields()
-                    write(str_recDim,'(i4.4)') recDim
-                    write(str_filterLen,'(i4.4)') int(workFilterLen)
-                    outputFileName = 'recNo_'//trim(str_recDim)//'.filterLen_'//trim(str_filterLen)//'.nc'
-                    call writeOcnOutPut_Pfields(outputLoc, &
-                                                outputFileName)
+                if (thisProc() .EQ. MASTER ) then
+                    call writeOcnOutPut_Pfields(recDim, filterLength )
                 endif
-                call MPI_Barrier(  MPI_COMM_WORLD, i_err)
+                !call MPI_Barrier(  MPI_COMM_WORLD, i_err)
 
             enddo !! filterLength
             
