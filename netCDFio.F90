@@ -4,6 +4,7 @@ module netCDFio
     use gridMod
     use fields
     use ncdf_wrapper
+    use mpiMod
     implicit none
     
     contains
@@ -158,7 +159,8 @@ module netCDFio
                                  varLongName, &
                                  varUnits
 
-      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err, &
+                            i , j ! for testing
 
       integer(kind = i4) :: f_id, &
                             x_dim_id, &
@@ -170,7 +172,7 @@ module netCDFio
                             time_id
 
       integer ::field_id(7)
-      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield, refField
 
       REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
 
@@ -178,7 +180,12 @@ module netCDFio
 
       call setOcnPgridXYsizeto(nxpo,nypo)
 
-      ALLOCATE(wfield(nxpo, nypo, 7), xpo(nxpo), ypo(nypo))
+      ALLOCATE(wfield(nxpo, nypo, 7), xpo(nxpo), ypo(nypo), refField(nxpo, nypo, 7))
+
+      xpo(:) = -999
+      ypo(:) = -999
+
+      wfield(:,:,:) = -999
 
       call getXpoYpo(xpo(:), ypo(:))
 
@@ -186,8 +193,28 @@ module netCDFio
                                      wfield(:,:,3), wfield(:,:,4), &   
                                      wfield(:,:,5))
 
+      call getInputFields(nxpo, nypo, refField(:,:,1), refField(:,:,2), &
+                                     refField(:,:,3), refField(:,:,4), &   
+                                     refField(:,:,5))
+
       wfield(:,:,6) = wfield(:,:,1)*wfield(:,:,3) + wfield(:,:,2) * wfield(:,:,4)
       wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
+
+      ! do j = 1, nypo
+      !   do i = 1, nxpo
+      !     if ((wfield(i,j,1) .NE. refField(i,j,1)) .OR. &
+      !         (wfield(i,j,2) .NE. refField(i,j,2)) .OR. &
+      !         (wfield(i,j,3) .NE. refField(i,j,3)) .OR. &
+      !         (wfield(i,j,4) .NE. refField(i,j,4)) .OR. &
+      !         (wfield(i,j,5) .NE. refField(i,j,5)) ) then
+
+      !           print *, 'Filter error found before writing'
+      !           print *, i, j 
+      !           call mpiAbort()
+      !     endif
+      !   enddo
+      ! enddo
+
 
       timeVal = getCurrTimeVal()
 
@@ -343,6 +370,8 @@ module netCDFio
       print *, 'Written file ', trim(fileWithPath) 
       nf_status = nf_close(f_id)
         if (nf_status /= nf_noerr) stop 'at close'
+
+      DEALLOCATE(xpo, ypo, wfield)
 
     end subroutine
 

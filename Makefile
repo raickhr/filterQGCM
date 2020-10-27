@@ -17,10 +17,10 @@ constants.o: kinds.o
 mpiMod.o: mpiMod.F90 kinds.o
 	$(FC) -c mpiMod.F90
 
-filter.o: fields.o kinds.o gridMod.o workDiv.o mpiMod.o
+filter.o: fields.o kinds.o gridMod.o workDiv.o mpiMod.o gatherScatter.o
 	$(FC) -c filter.F90
 
-netCDFio.o: kinds.o gridMod.o fields.o ncdf_wrapper.o
+netCDFio.o: kinds.o gridMod.o fields.o ncdf_wrapper.o mpiMod.o
 	$(FC) -c netCDFio.F90
 
 ncdf_wrapper.o : ncdf_wrapper.F90
@@ -35,13 +35,13 @@ configMod.o: kinds.o constants.o mpiMod.o
 fields.o: kinds.o gridMod.o configMod.o 
 	$(FC) -c fields.F90
 
-workDiv.o: gridMod.o mpiMod.o gatherScatter.o
+workDiv.o: gridMod.o mpiMod.o
 	$(FC) -c workDiv.F90
 
 operators.o: kinds.o constants.o gridMod.o
 	$(FC) -c operators.F90
 
-gatherScatter.o: kinds.o mpiMod.o fields.o
+gatherScatter.o: kinds.o mpiMod.o fields.o workDiv.o
 	$(FC) -c gatherScatter.F90
 
 clean:

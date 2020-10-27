@@ -2,7 +2,6 @@ module workDiv
     use kinds
     use gridMod
     use mpiMod
-    use gatherScatter
     implicit none
     private 
     save

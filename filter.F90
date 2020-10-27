@@ -4,6 +4,7 @@ module filter
     use fields
     use workDiv
     use mpiMod
+    use gatherScatter
 
     implicit none
     PRIVATE
@@ -155,14 +156,12 @@ module filter
                              i_err
 
 
-        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UVEL, VVEL, TAUX, TAUY, PPA
+        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UVEL, VVEL, TAUX, TAUY, PPA, &
+                                                        diff  !!! this is for testing
+
+        INTEGER(kind = i4) :: ii, jj  !! this is for test
 
         call setOcnPgridXYsizeto(nxpo, nypo)
-
-        is = knx/2 +1
-        ie = nxpo + knx/2
-        js = kny/2 +1
-        je = nypo + kny/2
 
         ALLOCATE(UVEL(nxpo, nypo), &
                  VVEL(nxpo, nypo), &
@@ -179,7 +178,8 @@ module filter
                  inTAUY(nxpo + knx-1, nypo+kny-1), &
                  outTAUY(nxpo + knx-1, nypo+kny-1), &
                  inPPA(nxpo + knx-1, nypo+kny-1), &
-                 outPPA(nxpo + knx-1, nypo+kny-1))
+                 outPPA(nxpo + knx-1, nypo+kny-1), &
+                 diff(nxpo + knx-1, nypo+kny-1))
 
         allocate(uf_UVEL(knx, kny), &
                  uf_VVEL(knx, kny), &
@@ -191,115 +191,75 @@ module filter
                             TAUX, TAUY, PPA)
 
 
-        startCol_tag = 1000
-        dataSize_tag = 2000
-        OL_UVEL_tag = 3000
-        OL_VVEL_tag = 4000
-        OL_TAUX_tag = 5000
-        OL_TAUY_tag = 6000
-        OL_PPA_tag = 7000
+        startCol_tag = 0
+        dataSize_tag = 0
+        OL_UVEL_tag = 0
+        OL_VVEL_tag = 0
+        OL_TAUX_tag = 0
+        OL_TAUY_tag = 0
+        OL_PPA_tag = 0
 
         inUVEL(:,:) = 0
-        outUVEL(:,:) = 0
         inVVEL(:,:) = 0
-        outVVEL(:,:) = 0
         inTAUX(:,:) = 0
-        outTAUX(:,:) = 0
         inTAUY(:,:) = 0
-        outTAUY(:,:) = 0
         inPPA(:,:) = 0
-        outPPA(:,:) = 0
+        
+        outUVEL(:,:) = -999
+        outVVEL(:,:) = -999
+        outTAUX(:,:) = -999
+        outTAUY(:,:) = -999
+        outPPA(:,:) = -999
 
-        inUVEL(is:ie, js:je) = UVEL(:,:)
-        inVVEL(is:ie, js:je) = VVEL(:,:)
-        inTAUX(is:ie, js:je) = TAUX(:,:)
-        inTAUY(is:ie, js:je) = TAUY(:,:)
-        inPPA(is:ie, js:je) = PPA(:,:)
+        is = knx/2 +1
+        ie = nxpo + knx/2
+        js = kny/2 +1
+        je = nypo + kny/2
+
+        inUVEL(is:ie, js:je) = UVEL(1:nxpo,1:nypo)
+        inVVEL(is:ie, js:je) = VVEL(1:nxpo,1:nypo)
+        inTAUX(is:ie, js:je) = TAUX(1:nxpo,1:nypo)
+        inTAUY(is:ie, js:je) = TAUY(1:nxpo,1:nypo)
+        inPPA(is:ie, js:je) = PPA(1:nxpo,1:nypo)
+
+        ! call getInputFields(nxpo, nypo, UVEL, VVEL, &
+        !                     TAUX, TAUY, PPA)
 
         ! if (thisProc() == MASTER) then
         !     print *,'before filtering TAUX(500,600)', TAUX(500,600)
         ! endif
 
-        if (thisProc() .NE. MASTER) then   
+        if (thisProc() .NE. MASTER) then       
             strt_col = get_start_col() +kny/2
             ed_col = get_end_col() +kny/2
 
+            row_size = nxpo + knx-1
+            data_size = row_size * (ed_col - strt_col +1)
             !print *, 'before filtering at point'
             do j = strt_col, ed_col
                 !write(*,'(A13 I3 I4 A3 I4)') 'at processor',thisProc(), j-strt_col+1,'of',ed_col-strt_col+1  
-                do i = knx/2 + 1, knx/2+1 + nxpo
+                do i = knx/2 + 1, knx/2 + nxpo
                     call filterAllFeildAtPoint(i,j)
+                    ! if (outUVEL(i,j) .NE. UVEL(i-knx/2,j-kny/2) .OR. &
+                    !     outVVEL(i,j) .NE. VVEL(i-knx/2,j-kny/2) .OR. &
+                    !     outTAUX(i,j) .NE. TAUX(i-knx/2,j-kny/2) .OR. &
+                    !     outTAUY(i,j) .NE. TAUY(i-knx/2,j-kny/2) .OR. &
+                    !     outPPA(i,j) .NE.  PPA(i-knx/2,j-kny/2)) then
+                    !         print *, 'unequal after filtering at proc ',&
+                    !          thisProc(), 'at i,j ', i-knx/2,j-kny/2
+                    !         call mpiAbort()
+                    ! endif
                 enddo
             enddo
+        endif
 
-            row_size = nxpo + knx-1
-            data_size = row_size * (ed_col - strt_col +1)
+        call gatherFilteredField(knx/2, kny/2, outUVEL, inUVEL, fieldName = 'UVEL')
+        call gatherFilteredField(knx/2, kny/2, outVVEL, inVVEL, fieldName = 'VVEL')
+        call gatherFilteredField(knx/2, kny/2, outTAUX, inTAUX, fieldName = 'TAUX')
+        call gatherFilteredField(knx/2, kny/2, outTAUY, inTAUY, fieldName = 'TAUY')
+        call gatherFilteredField(knx/2, kny/2, outPPA, inPPA, fieldName= 'PPA')
 
-            dest = MASTER
-
-            call MPI_SEND( strt_col, 1, MPI_INTEGER, MASTER, startCol_tag + thisProc(), &
-            &                 MPI_COMM_WORLD, i_err )
-            !print *, 'from thisProc()',thisProc(),' send start_col'
-
-            call MPI_SEND( data_size, 1, MPI_INTEGER, MASTER, dataSize_tag + thisProc(), &
-            &                 MPI_COMM_WORLD, i_err )
-            !print *, 'from thisProc()',thisProc(),' send data size'
-
-            call MPI_SEND( outUVEL(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_UVEL_tag + thisProc(), MPI_COMM_WORLD, status, i_err )
-            !print *, 'from thisProc()',thisProc(),' send outUVEL'
-
-            call MPI_SEND( outVVEL(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_VVEL_tag + thisProc(), MPI_COMM_WORLD, status, i_err )
-            !print *, 'from thisProc()',thisProc(),' send outVVEL'
-
-            call MPI_SEND( outTAUX(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_TAUX_tag + thisProc(), MPI_COMM_WORLD, status, i_err )
-            !print *, 'from thisProc()',thisProc(),' send outTAUX'
-
-            call MPI_SEND( outTAUY(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_TAUY_tag + thisProc(), MPI_COMM_WORLD, status, i_err )
-            !print *, 'from thisProc()',thisProc(),' send outTAUY'
-
-            call MPI_SEND( outPPA(1,strt_col), data_size, MPI_REAL, dest, &
-            & OL_PPA_tag + thisProc(), MPI_COMM_WORLD, status, i_err )
-            !print *, 'from thisProc()',thisProc(),' send outPPA'
-       
-        else
-            do source = 1, totalWorkers()
-
-                call MPI_RECV( strt_col, 1, MPI_INTEGER, source, startCol_tag + source, &
-                &                 MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv start_col'
-
-                call MPI_RECV( data_size, 1, MPI_INTEGER, source, dataSize_tag + source, &
-                &                 MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv datasize'
-
-                call MPI_RECV( outUVEL(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_UVEL_tag + source, MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv outUVEL'
-
-                call MPI_RECV( outVVEL(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_VVEL_tag + source, MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv outVVEL'
-
-                call MPI_RECV( outTAUX(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_TAUX_tag + source, MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv outTAUX'
-
-                call MPI_RECV( outTAUY(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_TAUY_tag + source, MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv outTAUY'
-
-                call MPI_RECV( outPPA(1,strt_col), data_size, MPI_REAL, source, &
-                & OL_PPA_tag + source, MPI_COMM_WORLD, status, i_err )
-                !print *, 'from thisProc()', source,' recv outPPA'
-
-                !print *, 'RECEIVED from Source', source
-            
-            enddo
-
+        if (thisProc() .EQ. MASTER) then 
             is = knx/2 +1
             ie = nxpo + knx/2
             js = kny/2 +1
@@ -349,17 +309,17 @@ module filter
         uf_TAUY(:,:) = inTAUY(is:ie,js:je)
         uf_PPA(:,:) = inPPA(is:ie,js:je)
 
-        ! outUVEL(index_i, index_j) = sum(uf_UVEL* kernel * dArea)/sum(kernel * dArea)
-        ! outVVEL(index_i, index_j) = sum(uf_VVEL* kernel * dArea)/sum(kernel * dArea)
-        ! outTAUX(index_i, index_j) = sum(uf_TAUX* kernel * dArea)/sum(kernel * dArea)
-        ! outTAUY(index_i, index_j) = sum(uf_TAUY* kernel * dArea)/sum(kernel * dArea)
-        ! outPPA(index_i, index_j) = sum(uf_PPA* kernel * dArea)/sum(kernel * dArea)
+        outUVEL(index_i, index_j) = sum(uf_UVEL* kernel * dArea)/sum(kernel * dArea)
+        outVVEL(index_i, index_j) = sum(uf_VVEL* kernel * dArea)/sum(kernel * dArea)
+        outTAUX(index_i, index_j) = sum(uf_TAUX* kernel * dArea)/sum(kernel * dArea)
+        outTAUY(index_i, index_j) = sum(uf_TAUY* kernel * dArea)/sum(kernel * dArea)
+        outPPA(index_i, index_j) = sum(uf_PPA* kernel * dArea)/sum(kernel * dArea)
 
-        outUVEL(index_i, index_j) = inUVEL(index_i, index_j)
-        outVVEL(index_i, index_j) = inVVEL(index_i, index_j)
-        outTAUX(index_i, index_j) = inTAUX(index_i, index_j)
-        outTAUY(index_i, index_j) = inTAUY(index_i, index_j)
-        outPPA(index_i, index_j) = inPPA(index_i, index_j)
+        ! outUVEL(index_i, index_j) = inUVEL(index_i, index_j)
+        ! outVVEL(index_i, index_j) = inVVEL(index_i, index_j)
+        ! outTAUX(index_i, index_j) = inTAUX(index_i, index_j)
+        ! outTAUY(index_i, index_j) = inTAUY(index_i, index_j)
+        ! outPPA(index_i, index_j) = inPPA(index_i, index_j)
 
     end subroutine
 

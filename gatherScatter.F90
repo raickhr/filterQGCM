@@ -3,6 +3,7 @@ module gatherScatter
     use mpiMod
     use fields
     use gridMod
+    use workDiv
 
     implicit none
     PRIVATE
@@ -11,7 +12,8 @@ module gatherScatter
     public :: broadCastInt, &
               broadCastFloat, &
               syncProcs, &
-              bcastVarsAfterReadingInputFile
+              bcastVarsAfterReadingInputFile, &
+              gatherFilteredField
 
     contains
 
@@ -84,6 +86,122 @@ module gatherScatter
 
         DEALLOCATE(xpo, ypo, &
                    UVEL, VVEL, TAUX, TAUY, PPA)
+    end subroutine
+
+
+    subroutine gatherFilteredField(startXoffset, startYoffset, field, refField, fieldName)
+        INTEGER(kind = i4), INTENT(IN) :: startXoffset, startYoffset
+        REAL(kind = r8), INTENT(INOUT), DIMENSION(:, :) :: field, refField
+        CHARACTER(len = *), INTENT(IN), OPTIONAL :: fieldName
+
+        INTEGER(kind = i4) :: source, dest, numworkers, msg_tag, &
+                              nxpo, nypo, & 
+                              startCol, endCol, nCol, &
+                              xcolSize, datasize, i_err, &
+                              i, j  !! dummy iterators
+
+        REAL(KIND=r8), ALLOCATABLE, DIMENSION(:,:) :: buffer_msg
+        msg_tag = 0
+
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
+        numworkers = totalWorkers()
+
+        if (thisProc() == MASTER) then
+            field(:, :) = -9999
+            do source = 1, numworkers
+                call MPI_RECV( startCol, 1, MPI_INTEGER, source, msg_tag , &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from thisProc()',thisProc(),' send start_col'
+
+                call MPI_RECV( endCol, 1, MPI_INTEGER, source, msg_tag , &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from thisProc()',thisProc(),' send end_col'
+
+                call MPI_RECV( nCol, 1, MPI_INTEGER, source, msg_tag , &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from thisProc()',thisProc(),' send end_col'
+
+                call MPI_RECV( datasize, 1, MPI_INTEGER, source, msg_tag , &
+                &                 MPI_COMM_WORLD, status, i_err )
+                !print *, 'from thisProc()',thisProc(),' send data size'
+
+                ALLOCATE(buffer_msg(nxpo + 2*startXoffset, ncol))
+                
+                call MPI_RECV( buffer_msg(:,:), datasize, MPI_REAL, source, &
+                & msg_tag , MPI_COMM_WORLD, status, i_err )
+                !print *, 'from thisProc()',thisProc(),' send outUVEL'
+                field(1:nxpo+2*startXoffset, startCol:endCol) = buffer_msg(:,:)
+                DEALLOCATE(buffer_msg)
+
+                ! call MPI_RECV( field(1, startCol), datasize, MPI_REAL, source, &
+                ! & msg_tag , MPI_COMM_WORLD, status, i_err )
+                ! !print *, 'from thisProc()',thisProc(),' send outUVEL'
+            
+                !
+
+                
+            end do
+
+            
+
+        else
+            dest = MASTER
+
+            startCol = get_start_col() + startYoffset
+            endCol = get_end_col() + startYoffset
+            ncol = get_ncol()
+
+            datasize = (2* startXoffset + nxpo) * ncol
+
+            call MPI_SEND( startCol, 1, MPI_INTEGER, dest, msg_tag , &
+            &                 MPI_COMM_WORLD, status, i_err )
+            !print *, 'from thisProc()',thisProc(),' send start_col'
+
+            call MPI_SEND( endCol, 1, MPI_INTEGER, dest, msg_tag , &
+            &                 MPI_COMM_WORLD, status, i_err )
+            !print *, 'from thisProc()',thisProc(),' send end_col'
+
+            call MPI_SEND( nCol, 1, MPI_INTEGER, dest, msg_tag , &
+            &                 MPI_COMM_WORLD, status, i_err )
+            !print *, 'from thisProc()',thisProc(),' send num_col'
+
+
+
+            call MPI_SEND( datasize, 1, MPI_INTEGER, dest, msg_tag , &
+            &                 MPI_COMM_WORLD, status, i_err )
+            !print *, 'from thisProc()',thisProc(),' send data size'
+
+            ALLOCATE(buffer_msg(nxpo + 2*startXoffset, ncol))
+
+            buffer_msg(:,:) = field(1:nxpo + 2*startXoffset,startCol:endCol)
+
+            call MPI_SEND( buffer_msg(:,:), datasize, MPI_REAL, dest, &
+            & msg_tag , MPI_COMM_WORLD, status, i_err )
+            ! print *, 'from thisProc()',thisProc(),' send outUVEL' 
+            DEALLOCATE(buffer_msg)  
+
+            ! call MPI_SEND( field(:,startCol:endCol), datasize, MPI_REAL, dest, &
+            !  & msg_tag , MPI_COMM_WORLD, status, i_err )
+            
+            
+
+        endif
+        
+        ! if (thisProc() == MASTER) then
+        !     do j = startYoffset + 1 , startYoffset + nypo
+        !         do i = startXoffset + 1, startXoffset + nxpo
+        !             if (field(i,j) .NE. refField(i,j)) then 
+        !                 if (PRESENT(fieldName)) then
+        !                     print *, fieldName
+        !                 endif
+        !                 print *,i-startXoffset,j-startYoffset,' gather field error'
+        !                 call mpiAbort()
+        !             endif
+        !         enddo
+        !     enddo
+        ! endif
+
     end subroutine
 
     
