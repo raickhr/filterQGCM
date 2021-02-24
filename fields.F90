@@ -173,16 +173,16 @@ module fields
 
         INTEGER(kind = r4), INTENT(IN) :: nxpo, nypo
     
-        REAL(kind = r8), INTENT(IN) ::  inUVEL(nxpo, nypo), inVVEL(nxpo, nypo), &
-                                        inTAUX(nxpo, nypo), inTAUY(nxpo, nypo), &
-                                        inPPA(nxpo, nypo)
+        REAL(kind = r8), INTENT(IN), DIMENSION(:, :) ::  inUVEL, inVVEL, &
+                                        inTAUX, inTAUY, &
+                                        inPPA
 
         
-        OL_UVEL(:,:) = inUVEL(:,:)
-        OL_VVEL(:,:) = inVVEL(:,:)
-        OL_TAUX(:,:) = inTAUX(:,:)
-        OL_TAUY(:,:) = inTAUY(:,:)
-        OL_PowerPerArea(:,:) = inPPA(:,:)
+        OL_UVEL = inUVEL
+        OL_VVEL = inVVEL
+        OL_TAUX = inTAUX
+        OL_TAUY = inTAUY
+        OL_PowerPerArea = inPPA
         
     end subroutine
 

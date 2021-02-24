@@ -137,7 +137,11 @@ module netCDFio
                                  tempField2D(:,:,2), &
                                  tempField2D(:,:,3))
 
+        print *, 'Saved Read Input Fields  '
+
         call saveReadXpoYpo(xpo,ypo)
+
+        print *, 'Saved Read xpo, ypo  '
 
         DEALLOCATE(tempField2D, xpo, ypo)
 

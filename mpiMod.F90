@@ -17,7 +17,8 @@ module mpiMod
     PUBLIC :: startMPI, &
               mpiAbort, &
               thisProc, &
-              totalWorkers
+              totalWorkers, &
+              endMPI
 
     contains
 
@@ -43,5 +44,9 @@ module mpiMod
         INTEGER(kind = i4 ) :: nWorkers
         nWorkers = numworkers
     end function
+
+    subroutine endMPI()
+        call MPI_Finalize(i_err)
+    end subroutine
 
 end module mpiMod

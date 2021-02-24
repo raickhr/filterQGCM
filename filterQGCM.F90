@@ -109,7 +109,8 @@ program filterQGCM
             
         enddo  !! recDim
     enddo
-
-    call MPI_Finalize()
+    print *, 'Finalizing MPI'
+    call endMPI()
+    print *, 'end program'
 
 end program filterQGCM

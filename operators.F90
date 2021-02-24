@@ -10,13 +10,15 @@ module operators
     subroutine calc_grad(nxpo, nypo, inField, gradX, gradY, &
                         boundTreatment)
         INTEGER(kind = i4) , INTENT(IN) :: nxpo, nypo
-        REAL(kind=r8),INTENT(IN) :: inField(nxpo, nypo)
-        REAL(kind=r8),INTENT(OUT) :: gradX(nxpo, nypo), gradY(nxpo, nypo)
+        REAL(kind=r8),DIMENSION(:,:), INTENT(IN) :: inField
+        REAL(kind=r8),DIMENSION(:,:), INTENT(OUT) :: gradX, gradY
         CHARACTER(len=*), OPTIONAL :: boundTreatment
+        
+        REAL(kind=r8) :: dx,dy
+        REAL(kind=r8), ALLOCATABLE :: left(:,:), right(:,:), & 
+                         up(:,:), down(:,:)
 
-        REAL(kind=r8) :: left(nxpo, nypo), right(nxpo, nypo), & 
-                         up(nxpo, nypo), down(nxpo, nypo), &
-                         dx, dy
+        ALLOCATE(left(nxpo, nypo), right(nxpo, nypo), up(nxpo, nypo), down(nxpo, nypo))
 
         left = cshift(inField, SHIFT=-1, DIM=1)
         right = cshift(inField, SHIFT=1, DIM=1)
@@ -54,14 +56,24 @@ module operators
         gradX = (right - left)/(2*dx)
         gradY = (up-down)/(2*dy)
 
+        DEALLOCATE(left, right, up, down)
+
+
     end subroutine
     
     subroutine calc_Ugos_Vgos_taux_tauy()
+
+        !!!!   2020 Oct 27 !!!!
+        !!!!   This subroutine is now modified to calulate 
+        !!!!   the ocean mixed layer velocity 
+
         INTEGER(kind = i4) :: nxpo, nypo
         REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:) :: &
                     P_field, & !!! Pressure field
-                    ugos, &
-                    vgos, & !!! goestrophic field from pressure
+                    ugos, & !!! goestrophic velocity field from pressure
+                    vgos, & !!! goestrophic velocity field from pressure
+                    umx, &  !!! mixed layer velocity (includes Ekman velocity)
+                    vmx, &  !!! mixed layer velocity (includes Ekman velocity)
                     gradX, &
                     gradY, &
                     taux, &
@@ -73,6 +85,8 @@ module operators
         ALLOCATE(P_field(nxpo, nypo), & 
                     ugos(nxpo, nypo), &
                     vgos(nxpo, nypo), & 
+                    umx(nxpo, nypo), &
+                    vmx(nxpo, nypo), & 
                     gradX(nxpo, nypo), &
                     gradY(nxpo, nypo), &
                     taux(nxpo, nypo), &
@@ -83,8 +97,7 @@ module operators
                                taux(:,:), tauy(:,:), PPA(:,:))
 
         call getPressureField(nxpo,nypo, P_field)
-
-        call calc_grad(nxpo, nypo, P_Field, &
+        call calc_grad(nxpo, nypo, P_field, &
                        gradX, &
                        gradY, &
                        boundTreatment='mirror')
@@ -95,10 +108,22 @@ module operators
         ugos = -gradY/f0
         vgos= gradX/f0
 
+        vmx = vgos - (taux)/(oHm * f0)
+        umx = ugos + (tauy)/(oHm * f0)
+
         taux = rho_o * taux
         tauy = rho_o * tauy
 
-        call saveInputFields(nxpo, nypo, ugos(:,:), vgos(:,:), taux(:,:), tauy(:,:))
+        call saveInputFields(nxpo, nypo, umx(:,:), vmx(:,:), taux(:,:), tauy(:,:))
+
+        print *, 'Saved mixed layer velocity and tau'
+
+        DEALLOCATE(P_field, &
+                    ugos, vgos, &
+                    umx, vmx, &
+                    gradX, gradY, &
+                    taux, tauy, &
+                    PPA)
 
     end subroutine
 

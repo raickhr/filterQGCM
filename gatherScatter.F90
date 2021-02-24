@@ -89,7 +89,12 @@ module gatherScatter
     end subroutine
 
 
-    subroutine gatherFilteredField(startXoffset, startYoffset, field, refField, fieldName)
+    subroutine gatherFilteredField(startXoffset,  &
+                                   startYoffset,  &
+                                   field,         &
+                                   refField,      &
+                                   fieldName)
+
         INTEGER(kind = i4), INTENT(IN) :: startXoffset, startYoffset
         REAL(kind = r8), INTENT(INOUT), DIMENSION(:, :) :: field, refField
         CHARACTER(len = *), INTENT(IN), OPTIONAL :: fieldName
