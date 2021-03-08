@@ -37,12 +37,12 @@ module netCDFio
                                        xpo(:), &
                                        ypo(:)
 
-        real(kind = r8) :: timeVal
+        real(kind = r8) :: timeVal, prevTimeVal
 
         call setOcnPgridXYsizeto(nxpo, nypo)
         k_level = 1
 
-        ALLOCATE(tempField2D(nxpo, nypo, 3), &
+        ALLOCATE(tempField2D(nxpo, nypo, 5), &
                  xpo(nxpo), &
                  ypo(nypo))
 
@@ -85,7 +85,10 @@ module netCDFio
         ierr = nf_get_vara_real(file_id,var_id,(/recDim_count/),(/1/),timeVal)
         if ( ierr /= nf_noerr )  call handle_err(ierr, 'nf_get_vara_real: time Val')
 
-        call setCurrTimeVal(timeVal)
+        prevTimeVal = getCurrTimeVal()
+        call setPrevTimeVal(prevTimeVal)
+
+        call setCurrTimeVal(timeVal) !!! setting this value from read value
         
         num_of_var = numVarsToRead()
 
@@ -133,9 +136,17 @@ module netCDFio
 
         ! print *, 'after reading TAUX(500,600)', tempField2D(500,600,2) * 1000  !! * density
 
+        ! tempField2D[:,:,1] = pressure,
+        ! tempField2D[:,:,2] = taux,
+        ! tempField2D[:,:,3] = tauy,
+        ! tempField2D[:,:,4] = umix, 
+        ! tempField2D[:,:,5] = vmix
+        
         call saveReadInputFields(nxpo, nypo, tempField2D(:,:,1), &
                                  tempField2D(:,:,2), &
-                                 tempField2D(:,:,3))
+                                 tempField2D(:,:,3), &
+                                 tempField2D(:,:,4), &
+                                 tempField2D(:,:,5))
 
         print *, 'Saved Read Input Fields  '
 
@@ -148,13 +159,13 @@ module netCDFio
 
     end subroutine
 
-    subroutine writeOcnOutPut_Pfields(recDim, filterLen)
+    subroutine writeOcnOutPut_Pfields(recDim, atmFilterLen, filterLen)
       ! outPath,  &
       !                              outFileName)
       INTEGER(kind = i4), INTENT(IN) :: recDim
-      REAL(kind = r4), INTENT(IN) :: filterLen 
+      REAL(kind = r4), INTENT(IN) :: atmFilterLen, filterLen 
 
-      CHARACTER(len = 4 ) :: str_recDim, str_filterLen
+      CHARACTER(len = 4 ) :: str_recDim, str_atmfilterLen, str_filterLen
 
       CHARACTER (len = char_len_long) :: outPath, fileWithPath
 
@@ -204,20 +215,22 @@ module netCDFio
       wfield(:,:,6) = wfield(:,:,1)*wfield(:,:,3) + wfield(:,:,2) * wfield(:,:,4)
       wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
 
-      ! do j = 1, nypo
-      !   do i = 1, nxpo
-      !     if ((wfield(i,j,1) .NE. refField(i,j,1)) .OR. &
-      !         (wfield(i,j,2) .NE. refField(i,j,2)) .OR. &
-      !         (wfield(i,j,3) .NE. refField(i,j,3)) .OR. &
-      !         (wfield(i,j,4) .NE. refField(i,j,4)) .OR. &
-      !         (wfield(i,j,5) .NE. refField(i,j,5)) ) then
+      if (filterLen .EQ. 0.0) then
+        do j = 1, nypo
+          do i = 1, nxpo
+            if ((wfield(i,j,1) .NE. refField(i,j,1)) .OR. &
+                (wfield(i,j,2) .NE. refField(i,j,2)) .OR. &
+                (wfield(i,j,3) .NE. refField(i,j,3)) .OR. &
+                (wfield(i,j,4) .NE. refField(i,j,4)) .OR. &
+                (wfield(i,j,5) .NE. refField(i,j,5)) ) then
 
-      !           print *, 'Filter error found before writing'
-      !           print *, i, j 
-      !           call mpiAbort()
-      !     endif
-      !   enddo
-      ! enddo
+                  print *, 'Filter error found before writing'
+                  print *, i, j 
+                  call mpiAbort()
+            endif
+          enddo
+        enddo
+      endif
 
 
       timeVal = getCurrTimeVal()
@@ -229,8 +242,9 @@ module netCDFio
 
       write(str_recDim,'(i4.4)') recDim
       write(str_filterLen,'(i4.4)') int(filterLen)
+      write(str_atmfilterLen,'(i4.4)') int(atmFilterLen)
 
-      filename = 'recNo_'//trim(str_recDim)//'.filterLen_'//trim(str_filterLen)//'.nc'
+      filename = 'recNo_'//trim(str_recDim)//'atmRes'//trim(str_atmfilterLen)//'.filterLen_'//trim(str_filterLen)//'.nc'
 
       outPath = getOutputLoc()
 
@@ -360,9 +374,942 @@ module netCDFio
                           timeVal )
         if (nf_status /= nf_noerr) stop 'at writing timeVal'
 
-    ! print *, 'xpo ypo and time written ... '
+     ! print *, 'xpo ypo and time written ... '
     
       do counter = 1, 7
+        nf_status = nf_put_var(f_id, &
+                            field_id(counter), &
+                            ! (/1,1,1/), (/nxpo, nypo, 1/), &
+                             wfield(:,:,counter))
+        if (nf_status /= nf_noerr) stop 'at put var'
+      enddo ! write feilds
+
+
+      print *, 'Written file ', trim(fileWithPath) 
+      nf_status = nf_close(f_id)
+        if (nf_status /= nf_noerr) stop 'at close'
+
+      DEALLOCATE(xpo, ypo, wfield)
+
+    end subroutine
+
+
+    subroutine writeAppendOcnOutPut_Pfields(recDim, atmFilterLen, filterLen)
+      ! outPath,  &
+      !                              outFileName)
+      INTEGER(kind = i4), INTENT(IN) :: recDim
+      REAL(kind = r4), INTENT(IN) :: atmFilterLen, filterLen 
+
+      LOGICAL :: file_exists
+
+      CHARACTER(len = 4 ) :: str_recDim, str_atmfilterLen, str_filterLen
+
+      CHARACTER (len = char_len_long) :: outPath, fileWithPath
+
+      CHARACTER(len=char_len) :: filename, &
+                                 varName, &
+                                 varLongName, &
+                                 varUnits
+
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err, &
+                            i , j ! for testing
+
+      integer(kind = i4) :: f_id, &
+                            x_dim_id, &
+                            y_dim_id, &
+                            time_dim_id, &
+                            coord_ids(3), &
+                            xpo_id, &
+                            ypo_id, &
+                            time_id
+
+      integer ::field_id(7)
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield, refField
+
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
+
+      REAL(kind=r8) :: timeVal
+
+      call setOcnPgridXYsizeto(nxpo,nypo)
+
+      ALLOCATE(wfield(nxpo, nypo, 7), xpo(nxpo), ypo(nypo), refField(nxpo, nypo, 7))
+
+      xpo(:) = -999
+      ypo(:) = -999
+
+      wfield(:,:,:) = -999
+
+      call getXpoYpo(xpo(:), ypo(:))
+
+      call getOutputFields(nxpo, nypo, wfield(:,:,1), wfield(:,:,2), &
+                                     wfield(:,:,3), wfield(:,:,4), &   
+                                     wfield(:,:,5))
+
+      call getInputFields(nxpo, nypo, refField(:,:,1), refField(:,:,2), &
+                                     refField(:,:,3), refField(:,:,4), &   
+                                     refField(:,:,5))
+
+      wfield(:,:,6) = wfield(:,:,1)*wfield(:,:,3) + wfield(:,:,2) * wfield(:,:,4)
+      wfield(:,:,7) = wfield(:,:,5) - wfield(:,:,6)
+
+      ! if (filterLen .EQ. 0.0) then
+      !   do j = 1, nypo
+      !     do i = 1, nxpo
+      !       if ((wfield(i,j,1) .NE. refField(i,j,1)) .OR. &
+      !           (wfield(i,j,2) .NE. refField(i,j,2)) .OR. &
+      !           (wfield(i,j,3) .NE. refField(i,j,3)) .OR. &
+      !           (wfield(i,j,4) .NE. refField(i,j,4)) .OR. &
+      !           (wfield(i,j,5) .NE. refField(i,j,5)) ) then
+
+      !             print *, 'Filter error found before writing'
+      !             print *, i, j 
+      !             call mpiAbort()
+      !       endif
+      !     enddo
+      !   enddo
+      ! endif
+
+
+      timeVal = getCurrTimeVal()
+
+      !if (thisProc() == MASTER) then
+      !        print *,'before writing xpo(500), ypo(500)', xpo(500), ypo(500)
+      !        print *,'before writing TAUX(500,600)', wfield(500,600,3)
+      !endif
+
+      write(str_recDim,'(i4.4)') recDim
+      write(str_filterLen,'(i4.4)') int(filterLen)
+      write(str_atmfilterLen,'(i4.4)') int(atmFilterLen)
+
+      filename = 'atmRes'//trim(str_atmfilterLen)//'.filterLen_'//trim(str_filterLen)//'.nc'
+
+      outPath = getOutputLoc()
+
+      fileWithPath = trim(adjustl(outPath))//'/'//&
+                 trim(adjustl(filename))
+
+      fileWithPath = trim(adjustl(fileWithPath))
+
+      !-------------------------------------------------------------------
+      !  open netcdf file if the file is not present
+      !-------------------------------------------------------------------
+
+      INQUIRE(FILE=fileWithPath, EXIST=file_exists)
+
+      if (file_exists .NE. .TRUE.) then
+        ! print *,'Opening to write ...',filename
+        nf_status = nf_create(fileWithPath, nf_clobber, f_id)
+        if (nf_status /= nf_noerr) stop 'at create file'
+
+        !-------------------------------------------------------------------
+        !  define dimensions
+        !-------------------------------------------------------------------
+        ! print *, 'Defining dimensions ...'
+
+        nf_status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def x_dim'
+
+        nf_status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+        nf_status = nf_def_dim(f_id, 'time', nf_unlimited, time_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+        ! print *, 'Dimensions defined'
+
+        coord_ids(1)=x_dim_id
+        coord_ids(2)=y_dim_id
+        coord_ids(3)=time_dim_id
+
+
+        ! print *,''
+        ! print *, 'Defining field variable'
+
+        nf_status = nf_def_var(f_id, &
+                            'xpo', &
+                            nf_float, 1, coord_ids(1), &
+                            xpo_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: xpo'
+
+        nf_status = nf_put_att_text(f_id, &
+                                xpo_id, &
+                                "units",len("km") , &
+                                  "km" )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: xpo'
+
+        nf_status = nf_def_var(f_id, &
+                            'ypo', &
+                            nf_float, 1, coord_ids(2), &
+                            ypo_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: ypo'
+
+        nf_status = nf_put_att_text(f_id, &
+                                ypo_id, &
+                                "units",len("km") , &
+                                  "km" )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: ypo'
+
+        nf_status = nf_def_var(f_id, &
+                            'time', &
+                            nf_float, 1, coord_ids(3), &
+                            time_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: time'
+
+        nf_status = nf_put_att_text(f_id, &
+                                time_id, &
+                                "units",len(trim(adjustl(timeUnits))) , &
+                                  timeUnits )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: time'
+          
+
+        do counter = 1, 7
+
+          varName = trim(adjustl(output2DOcnFields(counter)%fieldName))
+          varLongName = trim(adjustl(output2DOcnFields(counter)%longName))
+          varUnits = trim(adjustl(output2DOcnFields(counter)%units))
+
+          nf_status = nf_def_var(f_id, &
+                              varName, &
+                              nf_float, 3, coord_ids(1:3), &
+                              field_id(counter))
+          if (nf_status /= nf_noerr) stop 'at field var def'
+
+          nf_status = nf_put_att_text(f_id, &
+                                  field_id(counter), &
+                                  "units", len(trim(adjustl(varUnits))), &
+                                    varUnits )
+          if (nf_status /= nf_noerr) stop 'at put field attribute units'
+
+          nf_status = nf_put_att_text(f_id, &
+                                  field_id(counter), &
+                                  "long_name", len(trim(adjustl(varLongName))), &
+                                  varLongName)                         
+          if (nf_status /= nf_noerr) stop 'at put field attribute long_name'
+
+
+
+        enddo ! define fields
+
+        nf_status = nf_enddef(f_id)
+        if (nf_status /= nf_noerr) stop 'at enddef'
+
+        !print *, 'Defining variables SUCCESS...'
+
+        !-------------------------------------------------------------------
+        !  start writing the file
+        !-------------------------------------------------------------------
+        nf_status = nf_put_var(f_id, &
+                            xpo_id, &
+                            xpo)
+
+        if (nf_status /= nf_noerr) stop 'at writing xpo'
+
+        nf_status = nf_put_var(f_id, &
+                            ypo_id, &
+                            ypo)
+          if (nf_status /= nf_noerr) stop 'at writing ypo'
+
+      else  !! !! ending the first time file writing 
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !
+        !        opening if the the file is already present
+        !
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        nf_status = nf_open (fileWithPath, nf_write, f_id)
+        if ( nf_status /= nf_noerr )  stop 'nf_open to append'
+
+        nf_status = nf_inq_varid(f_id,'time',time_id)
+        if ( nf_status /= nf_noerr )  stop 'nf append time' 
+
+        do counter = 1, 7
+
+          varName = trim(adjustl(output2DOcnFields(counter)%fieldName))
+          nf_status = nf_inq_varid(f_id, varName, field_id(counter))
+          if ( nf_status /= nf_noerr )  stop 'nf_inq_varid '
+
+        enddo
+
+      endif
+
+
+      nf_status = nf_put_vara_real(f_id, &
+                              time_id, &
+                              (/recDim/), &
+                              (/1/),&
+                              timeVal )
+      if (nf_status /= nf_noerr) stop 'at writing timeVal'
+
+     ! print *, 'xpo ypo and time written ... '
+
+     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+      do counter = 1, 7
+        nf_status = nf_put_vara_real(f_id, &
+                                     field_id(counter), &
+                                     (/1,1,recDim/), &
+                                     (/nxpo, nypo, 1/), &
+                                      wfield(:,:,counter))
+        if (nf_status /= nf_noerr) stop 'at put var'
+      enddo ! write feilds
+
+
+      print *, 'Written in file ', trim(fileWithPath) 
+      nf_status = nf_close(f_id)
+        if (nf_status /= nf_noerr) stop 'at close'
+
+      DEALLOCATE(xpo, ypo, wfield)
+
+    end subroutine
+
+
+    subroutine writeFilteredAtmUmixVmix(recDim, atmFilterLen)
+      ! outPath,  &
+      !                              outFileName)
+      INTEGER(kind = i4), INTENT(IN) :: recDim
+      REAL(kind = r4), INTENT(IN) :: atmFilterLen 
+
+      CHARACTER(len = 4 ) :: str_recDim, str_atmfilterLen
+
+      CHARACTER (len = char_len_long) :: outPath, fileWithPath
+
+      CHARACTER(len=char_len) :: filename, &
+                                 varName, &
+                                 varLongName, &
+                                 varUnits
+
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err, &
+                            i , j ! for testing
+
+      integer(kind = i4) :: f_id, &
+                            x_dim_id, &
+                            y_dim_id, &
+                            time_dim_id, &
+                            coord_ids(3), &
+                            xpo_id, &
+                            ypo_id, &
+                            time_id
+
+      integer ::field_id(7)
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield, refField
+
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
+
+      REAL(kind=r8) :: timeVal
+
+      call setOcnPgridXYsizeto(nxpo,nypo)
+
+      ALLOCATE(wfield(nxpo, nypo, 2), xpo(nxpo), ypo(nypo), refField(nxpo, nypo, 2))
+
+      xpo(:) = -999
+      ypo(:) = -999
+
+      wfield(:,:,:) = -999
+
+      call getXpoYpo(xpo(:), ypo(:))
+
+      ! call getOutputFields(nxpo, nypo, wfield(:,:,1), wfield(:,:,2), &
+      !                                wfield(:,:,3), wfield(:,:,4), &   
+      !                                wfield(:,:,5))
+
+      ! call getInputFields(nxpo, nypo, refField(:,:,1), refField(:,:,2), &
+      !                                refField(:,:,3), refField(:,:,4), &   
+      !                                refField(:,:,5))
+
+      call getAtmFilteredUmixVmix(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+      !call getAtmUmixVmix(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+      
+      timeVal = getCurrTimeVal()
+
+      write(str_recDim,'(i4.4)') recDim
+      write(str_atmfilterLen,'(i4.4)') int(atmFilterLen)
+
+      filename = 'atmWinds.RecNo_'//trim(str_recDim)//'atmRes'//trim(str_atmfilterLen)//'.nc'
+
+      outPath = getOutputLoc()
+
+      fileWithPath = trim(adjustl(outPath))//'/'//&
+                 trim(adjustl(filename))
+
+      fileWithPath = trim(adjustl(fileWithPath))
+
+      !-------------------------------------------------------------------
+      !  open netcdf file
+      !-------------------------------------------------------------------
+
+      ! print *,'Opening to write ...',filename
+   	  nf_status = nf_create(fileWithPath, nf_clobber, f_id)
+   	  if (nf_status /= nf_noerr) stop 'at create file'
+
+      !-------------------------------------------------------------------
+      !  define dimensions
+      !-------------------------------------------------------------------
+      ! print *, 'Defining dimensions ...'
+
+      nf_status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def x_dim'
+
+      nf_status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      nf_status = nf_def_dim(f_id, 'time', 1, time_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      ! print *, 'Dimensions defined'
+
+      coord_ids(1)=x_dim_id
+      coord_ids(2)=y_dim_id
+      coord_ids(3)=time_dim_id
+
+
+      ! print *,''
+      ! print *, 'Defining field variable'
+
+      nf_status = nf_def_var(f_id, &
+                          'xpo', &
+                          nf_float, 1, coord_ids(1), &
+                          xpo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: xpo'
+
+      nf_status = nf_put_att_text(f_id, &
+                               xpo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: xpo'
+
+      nf_status = nf_def_var(f_id, &
+                          'ypo', &
+                          nf_float, 1, coord_ids(2), &
+                          ypo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: ypo'
+
+      nf_status = nf_put_att_text(f_id, &
+                               ypo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: ypo'
+
+      nf_status = nf_def_var(f_id, &
+                          'time', &
+                          nf_float, 1, coord_ids(3), &
+                          time_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: time'
+
+      nf_status = nf_put_att_text(f_id, &
+                               time_id, &
+                               "units",len(trim(adjustl(timeUnits))) , &
+                                timeUnits )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: time'
+        
+
+      do counter = 1, 2
+
+        varName = trim(adjustl(output2DAtmOvrOcnFields(counter)%fieldName))
+        varLongName = trim(adjustl(output2DAtmOvrOcnFields(counter)%longName))
+        varUnits = trim(adjustl(output2DAtmOvrOcnFields(counter)%units))
+
+        nf_status = nf_def_var(f_id, &
+                            varName, &
+                            nf_float, 3, coord_ids(1:3), &
+                            field_id(counter))
+        if (nf_status /= nf_noerr) stop 'at field var def'
+
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "units", len(trim(adjustl(varUnits))), &
+                                  varUnits )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units'
+
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "long_name", len(trim(adjustl(varLongName))), &
+                                 varLongName)                         
+        if (nf_status /= nf_noerr) stop 'at put field attribute long_name'
+
+
+
+      enddo ! define fields
+
+      nf_status = nf_enddef(f_id)
+      if (nf_status /= nf_noerr) stop 'at enddef'
+
+      !print *, 'Defining variables SUCCESS...'
+
+      !-------------------------------------------------------------------
+      !  start writing the file
+      !-------------------------------------------------------------------
+      nf_status = nf_put_var(f_id, &
+                          xpo_id, &
+                          xpo)
+
+      if (nf_status /= nf_noerr) stop 'at writing xpo'
+
+      nf_status = nf_put_var(f_id, &
+                          ypo_id, &
+                          ypo)
+        if (nf_status /= nf_noerr) stop 'at writing ypo'
+
+      nf_status = nf_put_var(f_id, &
+                          time_id, &
+                          timeVal )
+        if (nf_status /= nf_noerr) stop 'at writing timeVal'
+
+     ! print *, 'xpo ypo and time written ... '
+    
+      do counter = 1, 2
+        nf_status = nf_put_var(f_id, &
+                            field_id(counter), &
+                            ! (/1,1,1/), (/nxpo, nypo, 1/), &
+                             wfield(:,:,counter))
+        if (nf_status /= nf_noerr) stop 'at put var'
+      enddo ! write feilds
+
+
+      print *, 'Written file ', trim(fileWithPath) 
+      nf_status = nf_close(f_id)
+        if (nf_status /= nf_noerr) stop 'at close'
+
+      DEALLOCATE(xpo, ypo, wfield)
+
+    end subroutine
+
+    subroutine writeAppendFilteredAtmUmixVmix(recDim, atmFilterLen)
+      ! outPath,  &
+      !                              outFileName)
+      INTEGER(kind = i4), INTENT(IN) :: recDim
+      REAL(kind = r4), INTENT(IN) :: atmFilterLen 
+
+      LOGICAL :: file_exists
+
+      CHARACTER(len = 4 ) :: str_recDim, str_atmfilterLen
+
+      CHARACTER (len = char_len_long) :: outPath, fileWithPath
+
+      CHARACTER(len=char_len) :: filename, &
+                                 varName, &
+                                 varLongName, &
+                                 varUnits
+
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err, &
+                            i , j ! for testing
+
+      integer(kind = i4) :: f_id, &
+                            x_dim_id, &
+                            y_dim_id, &
+                            time_dim_id, &
+                            coord_ids(3), &
+                            xpo_id, &
+                            ypo_id, &
+                            time_id
+
+      integer ::field_id(7)
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield, refField
+
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
+
+      REAL(kind=r8) :: timeVal
+
+      call setOcnPgridXYsizeto(nxpo,nypo)
+
+      ALLOCATE(wfield(nxpo, nypo, 2), xpo(nxpo), ypo(nypo), refField(nxpo, nypo, 2))
+
+      xpo(:) = -999
+      ypo(:) = -999
+
+      wfield(:,:,:) = -999
+
+      call getXpoYpo(xpo(:), ypo(:))
+
+      ! call getOutputFields(nxpo, nypo, wfield(:,:,1), wfield(:,:,2), &
+      !                                wfield(:,:,3), wfield(:,:,4), &   
+      !                                wfield(:,:,5))
+
+      ! call getInputFields(nxpo, nypo, refField(:,:,1), refField(:,:,2), &
+      !                                refField(:,:,3), refField(:,:,4), &   
+      !                                refField(:,:,5))
+
+      call getAtmFilteredUmixVmix(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+      !call getAtmUmixVmix(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+      
+      timeVal = getCurrTimeVal()
+
+      write(str_recDim,'(i4.4)') recDim
+      write(str_atmfilterLen,'(i4.4)') int(atmFilterLen)
+
+      filename = 'atmWinds'//'Res'//trim(str_atmfilterLen)//'.nc'
+
+      outPath = getOutputLoc()
+
+      fileWithPath = trim(adjustl(outPath))//'/'//&
+                 trim(adjustl(filename))
+
+      fileWithPath = trim(adjustl(fileWithPath))
+
+      INQUIRE(FILE=fileWithPath, EXIST=file_exists)
+
+      if (file_exists .NE. .TRUE.) then
+
+        !-------------------------------------------------------------------
+        !  open netcdf file
+        !-------------------------------------------------------------------
+
+        ! print *,'Opening to write ...',filename
+        nf_status = nf_create(fileWithPath, nf_clobber, f_id)
+        if (nf_status /= nf_noerr) stop 'at create file'
+
+        !-------------------------------------------------------------------
+        !  define dimensions
+        !-------------------------------------------------------------------
+        ! print *, 'Defining dimensions ...'
+
+        nf_status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def x_dim'
+
+        nf_status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+        nf_status = nf_def_dim(f_id, 'time', nf_unlimited, time_dim_id)
+        if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+        ! print *, 'Dimensions defined'
+
+        coord_ids(1)=x_dim_id
+        coord_ids(2)=y_dim_id
+        coord_ids(3)=time_dim_id
+
+
+        ! print *,''
+        ! print *, 'Defining field variable'
+
+        nf_status = nf_def_var(f_id, &
+                            'xpo', &
+                            nf_float, 1, coord_ids(1), &
+                            xpo_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: xpo'
+
+        nf_status = nf_put_att_text(f_id, &
+                                xpo_id, &
+                                "units",len("km") , &
+                                  "km" )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: xpo'
+
+        nf_status = nf_def_var(f_id, &
+                            'ypo', &
+                            nf_float, 1, coord_ids(2), &
+                            ypo_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: ypo'
+
+        nf_status = nf_put_att_text(f_id, &
+                                ypo_id, &
+                                "units",len("km") , &
+                                  "km" )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: ypo'
+
+        nf_status = nf_def_var(f_id, &
+                            'time', &
+                            nf_float, 1, coord_ids(3), &
+                            time_id)
+        if (nf_status /= nf_noerr) stop 'at field var def: time'
+
+        nf_status = nf_put_att_text(f_id, &
+                                time_id, &
+                                "units",len(trim(adjustl(timeUnits))) , &
+                                  timeUnits )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units: time'
+          
+
+        do counter = 1, 2
+
+          varName = trim(adjustl(output2DAtmOvrOcnFields(counter)%fieldName))
+          varLongName = trim(adjustl(output2DAtmOvrOcnFields(counter)%longName))
+          varUnits = trim(adjustl(output2DAtmOvrOcnFields(counter)%units))
+
+          nf_status = nf_def_var(f_id, &
+                              varName, &
+                              nf_float, 3, coord_ids(1:3), &
+                              field_id(counter))
+          if (nf_status /= nf_noerr) stop 'at field var def'
+
+          nf_status = nf_put_att_text(f_id, &
+                                  field_id(counter), &
+                                  "units", len(trim(adjustl(varUnits))), &
+                                    varUnits )
+          if (nf_status /= nf_noerr) stop 'at put field attribute units'
+
+          nf_status = nf_put_att_text(f_id, &
+                                  field_id(counter), &
+                                  "long_name", len(trim(adjustl(varLongName))), &
+                                  varLongName)                         
+          if (nf_status /= nf_noerr) stop 'at put field attribute long_name'
+
+
+
+        enddo ! define fields
+
+        nf_status = nf_enddef(f_id)
+        if (nf_status /= nf_noerr) stop 'at enddef'
+
+        !print *, 'Defining variables SUCCESS...'
+
+        !-------------------------------------------------------------------
+        !  start writing the file
+        !-------------------------------------------------------------------
+        nf_status = nf_put_var(f_id, &
+                            xpo_id, &
+                            xpo)
+
+        if (nf_status /= nf_noerr) stop 'at writing xpo'
+
+        nf_status = nf_put_var(f_id, &
+                            ypo_id, &
+                            ypo)
+          if (nf_status /= nf_noerr) stop 'at writing ypo'
+
+      else
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !
+        !        opening if the the file is already present
+        !
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        nf_status = nf_open (fileWithPath, nf_write, f_id)
+        if ( nf_status /= nf_noerr )  stop 'nf_open to append'
+
+        nf_status = nf_inq_varid(f_id,'time',time_id)
+        if ( nf_status /= nf_noerr )  stop 'nf append time' 
+
+        do counter = 1, 2
+
+          varName = trim(adjustl(output2DAtmOvrOcnFields(counter)%fieldName))
+          nf_status = nf_inq_varid(f_id, varName, field_id(counter))
+          if ( nf_status /= nf_noerr )  stop 'nf_inq_varid '
+
+        enddo
+
+      endif
+
+      nf_status = nf_put_vara_real(f_id, &
+                              time_id, &
+                              (/recDim/), &
+                              (/1/),&
+                              timeVal )
+      if (nf_status /= nf_noerr) stop 'at writing timeVal'
+
+     ! print *, 'xpo ypo and time written ... '
+
+     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+      do counter = 1, 2
+        nf_status = nf_put_vara_real(f_id, &
+                                     field_id(counter), &
+                                     (/1,1,recDim/), &
+                                     (/nxpo, nypo, 1/), &
+                                      wfield(:,:,counter))
+        if (nf_status /= nf_noerr) stop 'at put var'
+      enddo ! write feilds
+
+
+      print *, 'Written in file ', trim(fileWithPath) 
+    
+      nf_status = nf_close(f_id)
+        if (nf_status /= nf_noerr) stop 'at close'
+
+      DEALLOCATE(xpo, ypo, wfield)
+
+    end subroutine
+
+
+    subroutine writeAfterReadingAtmUmixVmix(recDim)
+      ! outPath,  &
+      !                              outFileName)
+      INTEGER(kind = i4), INTENT(IN) :: recDim
+
+      CHARACTER(len = 4 ) :: str_recDim, str_atmfilterLen
+
+      CHARACTER (len = char_len_long) :: outPath, fileWithPath
+
+      CHARACTER(len=char_len) :: filename, &
+                                 varName, &
+                                 varLongName, &
+                                 varUnits
+
+      integer(kind = i4) :: counter, nxpo, nypo, nf_status, i_err, &
+                            i , j ! for testing
+
+      integer(kind = i4) :: f_id, &
+                            x_dim_id, &
+                            y_dim_id, &
+                            time_dim_id, &
+                            coord_ids(3), &
+                            xpo_id, &
+                            ypo_id, &
+                            time_id
+
+      integer ::field_id(7)
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:,:):: wfield, refField
+
+      REAL(kind=r8), ALLOCATABLE, DIMENSION(:):: xpo, ypo
+
+      REAL(kind=r8) :: timeVal
+
+      call setOcnPgridXYsizeto(nxpo,nypo)
+
+      ALLOCATE(wfield(nxpo, nypo, 2), xpo(nxpo), ypo(nypo), refField(nxpo, nypo, 2))
+
+      xpo(:) = -999
+      ypo(:) = -999
+
+      wfield(:,:,:) = -999
+
+      call getXpoYpo(xpo(:), ypo(:))
+
+      ! call getOutputFields(nxpo, nypo, wfield(:,:,1), wfield(:,:,2), &
+      !                                wfield(:,:,3), wfield(:,:,4), &   
+      !                                wfield(:,:,5))
+
+      ! call getInputFields(nxpo, nypo, refField(:,:,1), refField(:,:,2), &
+      !                                refField(:,:,3), refField(:,:,4), &   
+      !                                refField(:,:,5))
+
+      !call getAtmUmixVmix(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+
+      call getOcnUgosVgos(nxpo, nypo, wfield(:,:,1), wfield(:,:,2))
+      
+      timeVal = getCurrTimeVal()
+
+      write(str_recDim,'(i4.4)') recDim
+      
+      filename = 'atmWinds.RecNo_'//trim(str_recDim)//'.nc'
+
+      outPath = getOutputLoc()
+
+      fileWithPath = trim(adjustl(outPath))//'/'//&
+                 trim(adjustl(filename))
+
+      fileWithPath = trim(adjustl(fileWithPath))
+
+      !-------------------------------------------------------------------
+      !  open netcdf file
+      !-------------------------------------------------------------------
+
+      ! print *,'Opening to write ...',filename
+   	  nf_status = nf_create(fileWithPath, nf_clobber, f_id)
+   	  if (nf_status /= nf_noerr) stop 'at create file'
+
+      !-------------------------------------------------------------------
+      !  define dimensions
+      !-------------------------------------------------------------------
+      ! print *, 'Defining dimensions ...'
+
+      nf_status = nf_def_dim(f_id, 'xpo', nxpo, x_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def x_dim'
+
+      nf_status = nf_def_dim(f_id, 'ypo', nypo, y_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      nf_status = nf_def_dim(f_id, 'time', 1, time_dim_id)
+      if (nf_status /= nf_noerr) stop 'at def y_dim'
+
+      ! print *, 'Dimensions defined'
+
+      coord_ids(1)=x_dim_id
+      coord_ids(2)=y_dim_id
+      coord_ids(3)=time_dim_id
+
+
+      ! print *,''
+      ! print *, 'Defining field variable'
+
+      nf_status = nf_def_var(f_id, &
+                          'xpo', &
+                          nf_float, 1, coord_ids(1), &
+                          xpo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: xpo'
+
+      nf_status = nf_put_att_text(f_id, &
+                               xpo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: xpo'
+
+      nf_status = nf_def_var(f_id, &
+                          'ypo', &
+                          nf_float, 1, coord_ids(2), &
+                          ypo_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: ypo'
+
+      nf_status = nf_put_att_text(f_id, &
+                               ypo_id, &
+                               "units",len("km") , &
+                                "km" )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: ypo'
+
+      nf_status = nf_def_var(f_id, &
+                          'time', &
+                          nf_float, 1, coord_ids(3), &
+                          time_id)
+      if (nf_status /= nf_noerr) stop 'at field var def: time'
+
+      nf_status = nf_put_att_text(f_id, &
+                               time_id, &
+                               "units",len(trim(adjustl(timeUnits))) , &
+                                timeUnits )
+      if (nf_status /= nf_noerr) stop 'at put field attribute units: time'
+        
+
+      do counter = 1, 2
+
+        varName = trim(adjustl(output2DAtmOvrOcnFields(counter)%fieldName))
+        varLongName = trim(adjustl(output2DAtmOvrOcnFields(counter)%longName))
+        varUnits = trim(adjustl(output2DAtmOvrOcnFields(counter)%units))
+
+        nf_status = nf_def_var(f_id, &
+                            varName, &
+                            nf_float, 3, coord_ids(1:3), &
+                            field_id(counter))
+        if (nf_status /= nf_noerr) stop 'at field var def'
+
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "units", len(trim(adjustl(varUnits))), &
+                                  varUnits )
+        if (nf_status /= nf_noerr) stop 'at put field attribute units'
+
+        nf_status = nf_put_att_text(f_id, &
+                                 field_id(counter), &
+                                 "long_name", len(trim(adjustl(varLongName))), &
+                                 varLongName)                         
+        if (nf_status /= nf_noerr) stop 'at put field attribute long_name'
+
+
+
+      enddo ! define fields
+
+      nf_status = nf_enddef(f_id)
+      if (nf_status /= nf_noerr) stop 'at enddef'
+
+      !print *, 'Defining variables SUCCESS...'
+
+      !-------------------------------------------------------------------
+      !  start writing the file
+      !-------------------------------------------------------------------
+      nf_status = nf_put_var(f_id, &
+                          xpo_id, &
+                          xpo)
+
+      if (nf_status /= nf_noerr) stop 'at writing xpo'
+
+      nf_status = nf_put_var(f_id, &
+                          ypo_id, &
+                          ypo)
+        if (nf_status /= nf_noerr) stop 'at writing ypo'
+
+      nf_status = nf_put_var(f_id, &
+                          time_id, &
+                          timeVal )
+        if (nf_status /= nf_noerr) stop 'at writing timeVal'
+
+     ! print *, 'xpo ypo and time written ... '
+    
+      do counter = 1, 2
         nf_status = nf_put_var(f_id, &
                             field_id(counter), &
                             ! (/1,1,1/), (/nxpo, nypo, 1/), &

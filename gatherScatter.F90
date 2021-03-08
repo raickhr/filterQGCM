@@ -12,7 +12,9 @@ module gatherScatter
     public :: broadCastInt, &
               broadCastFloat, &
               syncProcs, &
-              bcastVarsAfterReadingInputFile, &
+              bcastAllVarsBeforeFiltering, &
+              bcastUatmVatmBeforeFiltering, &
+              bcastDimensionVars, &
               gatherFilteredField
 
     contains
@@ -34,38 +36,51 @@ module gatherScatter
         call MPI_Barrier(MPI_COMM_WORLD, errorCode)
     end subroutine 
 
-
-    subroutine bcastVarsAfterReadingInputFile(i_err)
+    subroutine bcastDimensionVars(i_err)
         INTEGER(kind = i4), INTENT(OUT) :: i_err
-
         INTEGER(kind = i4) :: nxpo, nypo, msgSize
-
-        REAL(kind = r8) :: timeVal
-
+        REAL(kind = r8) :: timeVal, prevTimeVal
         REAL(kind = r8), ALLOCATABLE, DIMENSION(:) :: xpo, ypo
-
-        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UVEL, VVEL, TAUX, TAUY, PPA
 
         call setOcnPgridXYsizeto(nxpo, nypo)
 
         ALLOCATE(xpo(nxpo), ypo(nypo))
 
-        ALLOCATE(UVEL(nxpo, nypo), VVEL(nxpo, nypo), &
-                 TAUX(nxpo, nypo), TAUY(nxpo, nypo), &
-                 PPA(nxpo, nypo))
-
-        call getInputFields(nxpo, nypo, UVEL, VVEL, &
-                               TAUX, TAUY, PPA)
-
         call getXpoYpo(xpo, ypo)
+
+        timeVal = getCurrTimeVal()
+        prevTimeVal = getPrevTimeVal()
 
         call MPI_BCAST(xpo, nxpo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(ypo, nypo, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
         call MPI_BCAST(timeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
-        
-        ! print *,'at taskid',taskid,' received xpo, ypo, timeVal'
+        call MPI_BCAST(prevTimeVal, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
 
         call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        call saveReadXpoYpo(xpo, ypo)
+
+        call setCurrTimeVal(timeVal)
+        call setPrevTimeVal(prevTimeVal)
+
+        DEALLOCATE(xpo, ypo)
+    
+    end subroutine
+
+    subroutine bcastAllVarsBeforeFiltering(i_err)
+        INTEGER(kind = i4), INTENT(OUT) :: i_err
+
+        INTEGER(kind = i4) :: nxpo, nypo, msgSize
+
+        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UVEL, VVEL, TAUX, TAUY, PPA
+
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
+        ALLOCATE(UVEL(nxpo, nypo), VVEL(nxpo, nypo), &
+                 TAUX(nxpo, nypo), TAUY(nxpo, nypo), PPA(nxpo, nypo))
+
+        call getInputFields(nxpo, nypo, UVEL, VVEL, &
+                               TAUX, TAUY, PPA)
 
         msgSize = nxpo * nypo
 
@@ -81,11 +96,42 @@ module gatherScatter
 
         call MPI_BARRIER(MPI_COMM_WORLD, i_err)
 
-        call saveInputFields(nxpo, nypo, UVEL, VVEL, TAUX, TAUY)
-        call saveReadXpoYpo(xpo, ypo)
+        PPA = UVEL * TAUX + VVEL * TAUY
 
-        DEALLOCATE(xpo, ypo, &
-                   UVEL, VVEL, TAUX, TAUY, PPA)
+        call saveUnfilteredFields(nxpo, nypo, UVEL, VVEL, TAUX, TAUY, PPA)
+
+        DEALLOCATE(UVEL, VVEL, TAUX, TAUY, PPA)
+    end subroutine
+
+
+    subroutine bcastUatmVatmBeforeFiltering(i_err)
+        INTEGER(kind = i4), INTENT(OUT) :: i_err
+
+        INTEGER(kind = i4) :: nxpo, nypo, msgSize
+
+        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UATM, VATM
+
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
+        ALLOCATE(UATM(nxpo, nypo), VATM(nxpo, nypo))
+
+        call getAtmUmixVmix(nxpo, nypo, UATM, VATM)
+
+        msgSize = nxpo * nypo
+
+        ! print *,'at taskid',taskid,'nxpo, nypo', nxpo, nypo
+
+        !!!! broadcast ugos, vgos, taux, tauy, 
+        call MPI_BCAST(UATM, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        call MPI_BCAST(VATM, msgSize, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        
+        ! print *,'at taskid',taskid,'received UVEL, VVEL, TAUX, TAUY, PowerPerArea'
+
+        call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        call saveInputAtmUmixVmix(nxpo, nypo, UATM, VATM)
+
+        DEALLOCATE(UATM, VATM)
     end subroutine
 
 

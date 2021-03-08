@@ -21,18 +21,20 @@ nza_c = 3
 
 &for_allocation
 nInputFiles=1
-nVars2read=3
+nVars2read=5
 nFilterLength=2
+nAtmFilterLength=2
 startRecCount = 1
 endRecCount = 10
 /
 
 &fileName_VarName
 inputFileList="ocpo.nc"
-varNameList="p","taux","tauy"
+varNameList="p","taux","tauy","umix","vmix"
 /
 
 &filterLenList
+atmfilterLengthList = 0,200
 filterLengthList = 100,200
 /
 

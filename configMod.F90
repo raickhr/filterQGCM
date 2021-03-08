@@ -13,9 +13,10 @@ module configMod
 
     INTEGER(kind = i4) :: nxto_c, nyto_c, nzo_c, nxta_c, nyta_c, nza_c
        
-    INTEGER(kind = i4) :: nInputFiles,    & !! number of input files
-                          nVars2read, &     !! number of variables to read from each file
-                          nFilterLength    !! number of filter lengths 
+    INTEGER(kind = i4) :: nInputFiles,      & !! number of input files
+                          nVars2read,       & !! number of variables to read from each file
+                          nAtmFilterLength, & !! number of atmospheric filterlength
+                          nFilterLength       !! number of filter lengths 
 
     CHARACTER (len = char_len), ALLOCATABLE, DIMENSION(:) :: inputFileList    !! names of input Files
 
@@ -25,7 +26,8 @@ module configMod
                             varNameList                     !! names of input Variables
 
 
-    REAL(kind =r8) , ALLOCATABLE, DIMENSION(:) :: filterLengthList   !! filter lengths in km
+    REAL(kind =r8) , ALLOCATABLE, DIMENSION(:) :: atmFilterLengthList,  &  !! atmospheric filterlength list
+                                                  filterLengthList         !! filter lengths in km
 
     INTEGER(kind=i4) :: startRecCount, endRecCount  !! record counts to be read from a file
     
@@ -37,11 +39,13 @@ module configMod
               getOutputLoc, &
               numFilesToRead, &
               numVarsToRead, &
+              numAtmFilterLength, &
               numFilterLength, &
               getInFileListIn, &
               getVarNameListIn, &
               getInFileNo, &
               getVarNameNo, &
+              getAtmFilterLenNo, &
               getFilterLenNo, &
               startRecIndx, &
               endRecIndx
@@ -71,6 +75,7 @@ module configMod
         nInputFiles, &
         nVars2read,    &
         nFilterLength, &
+        nAtmFilterLength, &
         startRecCount, &
         endRecCount
 
@@ -79,7 +84,7 @@ module configMod
         varNameList
 
         namelist /filterLenList/ &
-        filterLengthList
+        atmfilterLengthList, filterLengthList
 
         namelist /coriolis/ &
         f0
@@ -112,11 +117,13 @@ module configMod
             print *, 'Reading information ...'
             WRITE(* ,'(A30,I4)') 'number of input files =', nInputFiles
             WRITE(* ,'(A30,I4)') 'number of variables to read =', nVars2read
+            WRITE(* ,'(A30,I4)') 'number of atm. filterlengths =', nAtmFilterLength
             WRITE(* ,'(A30,I4)') 'number of filterlengths =', nFilterLength
             WRITE(* ,'(A30,I4,A4,I4)') 'reading from record no ', startRecCount,' to ', endRecCount
 
             allocate(inputFileList(nInputFiles), &
                     varNameList(nVars2read), &
+                    atmFilterLengthList(nAtmFilterLength), &
                     filterLengthList(nFilterLength))
 
             read(*, fileName_VarName)
@@ -137,6 +144,12 @@ module configMod
             end do
 
             print *, ''
+            print *, 'Atmosphere to be coarsened to ... '
+            do i=1, nAtmFilterLength
+                WRITE(* ,'(f07.2,A3)') atmFilterLengthList(i),'km'
+            end do
+
+            print *, ''
             print *, 'Filterlengths to be filtered at ... '
             do i=1, nFilterLength
                 WRITE(* ,'(f07.2,A3)') filterLengthList(i),'km'
@@ -151,6 +164,7 @@ module configMod
 
         call MPI_BCAST(nInputFiles, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
         call MPI_BCAST(nFilterLength, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
+        call MPI_BCAST(nAtmFilterLength, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
         call MPI_BCAST(startRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
         call MPI_BCAST(endRecCount, 1, MPI_INTEGER , MASTER, MPI_COMM_WORLD, err)
 
@@ -198,6 +212,11 @@ module configMod
         returnVal = nFilterLength
     end function
 
+    function numAtmFilterLength() result(returnVal)
+        INTEGER(kind = i4) :: returnVal
+        returnVal = nAtmFilterLength
+    end function
+
     subroutine getInFileListIn(list)
         CHARACTER (len = char_len), INTENT(OUT) :: list(nInputFiles)
         list(:) = inputFileList(:)
@@ -218,6 +237,12 @@ module configMod
         INTEGER(kind = i4) :: number
         CHARACTER (len = char_len_short):: returnVal
         returnVal = varNameList(number)
+    end function
+
+    function getAtmFilterLenNo(number) result(returnVal)
+        INTEGER(kind = i4) :: number
+        REAL(kind=r4) :: returnVal
+        returnVal = atmFilterLengthList(number)
     end function
 
     function getFilterLenNo(number) result(returnVal)

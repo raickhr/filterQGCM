@@ -61,7 +61,7 @@ module operators
 
     end subroutine
     
-    subroutine calc_Ugos_Vgos_taux_tauy()
+    subroutine calc_Ugos_Vgos()
 
         !!!!   2020 Oct 27 !!!!
         !!!!   This subroutine is now modified to calulate 
@@ -77,8 +77,7 @@ module operators
                     gradX, &
                     gradY, &
                     taux, &
-                    tauy, &
-                    PPA
+                    tauy
 
         call setOcnPgridXYsizeto(nxpo, nypo)
 
@@ -90,11 +89,9 @@ module operators
                     gradX(nxpo, nypo), &
                     gradY(nxpo, nypo), &
                     taux(nxpo, nypo), &
-                    tauy(nxpo, nypo), &
-                    PPA(nxpo, nypo))
+                    tauy(nxpo, nypo))
 
-        call getInputFields(nxpo, nypo, ugos(:,:), vgos(:,:), &
-                               taux(:,:), tauy(:,:), PPA(:,:))
+        call getTauxTauy(nxpo, nypo, taux(:,:), tauy(:,:))
 
         call getPressureField(nxpo,nypo, P_field)
         call calc_grad(nxpo, nypo, P_field, &
@@ -108,22 +105,63 @@ module operators
         ugos = -gradY/f0
         vgos= gradX/f0
 
+        call saveInputOcnUgosVgos(nxpo, nypo, ugos(:,:), vgos(:,:))
+
         vmx = vgos - (taux)/(oHm * f0)
         umx = ugos + (tauy)/(oHm * f0)
 
-        taux = rho_o * taux
+        taux = rho_o * taux !! This tau will be updated later
         tauy = rho_o * tauy
 
-        call saveInputFields(nxpo, nypo, umx(:,:), vmx(:,:), taux(:,:), tauy(:,:))
+        !! This sets the value of the ocean surface velocity 
+        call saveInputOcnUmixVmix(nxpo, nypo, umx(:,:), vmx(:,:))
 
-        print *, 'Saved mixed layer velocity and tau'
+        print *, 'Saved ocean mixed layer velocity ' 
 
         DEALLOCATE(P_field, &
                     ugos, vgos, &
                     umx, vmx, &
                     gradX, gradY, &
-                    taux, tauy, &
-                    PPA)
+                    taux, tauy)
+
+    end subroutine
+
+    subroutine calc_taux_tauy()
+
+        INTEGER(kind = i4) :: nxpo, nypo
+        REAL(kind=r8), ALLOCATABLE, DIMENSION(:,:) :: &
+                    umx, vmx, &     !! mixed layer velocity (includes Ekman velocity)
+                    umx_a, vmx_a, & !! atmospheric mixed layer velocity
+                    relVelMag, &    !! relative velocity magnitude
+                    taux,tauy       !! taux tauy
+
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
+        ALLOCATE(   umx(nxpo, nypo), &
+                    vmx(nxpo, nypo), & 
+                    umx_a(nxpo, nypo), &
+                    vmx_a(nxpo, nypo), &
+                    taux(nxpo, nypo), &
+                    tauy(nxpo, nypo), & 
+                    relVelMag(nxpo, nypo) )
+
+        call getAtmFilteredUmixVmix(nxpo, nypo, umx_a, vmx_a)
+
+        call getOcnUmixVmix(nxpo, nypo, umx, vmx)
+
+        relVelMag = SQRT((umx_a - umx)**2 + (vmx_a - vmx)**2)
+
+        taux = Cd * relVelMag * (umx_a - umx)
+        tauy = Cd * relVelMag * (vmx_a - vmx)
+
+        call saveInputTauxTauy(nxpo, nypo, taux(:,:), tauy(:,:))
+
+        print *, 'Calculated and saved taux and tauy .... ' 
+
+        DEALLOCATE(umx, vmx, &
+                   umx_a, vmx_a, &
+                   taux, tauy, &
+                   relVelMag)
 
     end subroutine
 

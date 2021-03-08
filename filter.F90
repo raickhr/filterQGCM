@@ -11,12 +11,16 @@ module filter
     save
 
 
-    real(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: kernel
+    real(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: kernel, atmKernel
 
     REAL(kind = r8) , ALLOCATABLE, DIMENSION(:,:):: inUVEL, &
                                                     outUVEL, &
                                                     inVVEL, &
                                                     outVVEL, &
+                                                    inUATM, &
+                                                    outUATM, &
+                                                    inVATM, &
+                                                    outVATM, &
                                                     inTAUX, &
                                                     outTAUX, &
                                                     inTAUY, &
@@ -26,15 +30,17 @@ module filter
 
     REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: uf_UVEL, &
                                                     uf_VVEL, &
+                                                    uf_UATM, &
+                                                    uf_VATM, &
                                                     uf_TAUX, &
                                                     uf_TAUY, &
                                                     uf_PPA
 
     real(kind = r8) :: dArea
 
-    INTEGER(kind = i4) :: knx, kny
+    INTEGER(kind = i4) :: atmKnx, atmKny, knx, kny
 
-    PUBLIC :: makeKernel, filterFields
+    PUBLIC :: makeKernel, makeAtmKernel, filterFields, filterAtmUmixVmix
 
 
     contains
@@ -100,7 +106,16 @@ module filter
         dArea = dx*dy
 
         knx = NINT(((filterLength/2.0)/dx)+1) * 2 + 1
-        kny = NINT(((filterLength/2.0)/dy)+1) * 2 + 1        
+        kny = NINT(((filterLength/2.0)/dy)+1) * 2 + 1
+        
+        if (filterLength .LT. (2.0 * dx) ) then
+            knx = 1
+        endif
+
+        if (filterLength .LT. (2.0 * dy) ) then
+            kny = 1
+        endif
+
 
         allocate(distFromCenter(knx, kny), &
                  kernel(knx, kny), &
@@ -139,6 +154,193 @@ module filter
         
         
     end subroutine
+
+
+    subroutine makeAtmKernel(filterLength, gridType, ocnORatmGrid )
+        REAL(kind =r4), INTENT(IN) :: filterLength
+        CHARACTER, INTENT(IN) :: gridType
+        CHARACTER, OPTIONAL :: ocnORatmGrid
+        REAL(kind = r8) :: dx, dy
+
+        INTEGER(kind=i4) :: i, j, &  !! iterators
+                            i_err, & !! error status
+                            n  !! dummy number
+
+        real(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: kX2D, kY2D, &
+                                                        distFromCenter, &
+                                                        ell_by2, weight
+
+    
+        if (ALLOCATED(atmKernel)) then
+            DEALLOCATE(atmKernel)
+        endif
+
+        if (thisProc() == MASTER) then 
+            dx = getDxpo()
+            dy = getDypo()
+        endif
+
+        call MPI_BCAST(filterLength, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        call MPI_BCAST(dx, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+        call MPI_BCAST(dy, 1, MPI_REAL , MASTER, MPI_COMM_WORLD, i_err)
+
+        call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        dArea = dx*dy
+
+        atmKnx = NINT(((filterLength/2.0)/dx)+1) * 2 + 1
+        atmKny = NINT(((filterLength/2.0)/dy)+1) * 2 + 1
+        
+        if (filterLength .LT. (2.0 * dx) ) then
+            atmKnx = 1
+        endif
+
+        if (filterLength .LT. (2.0 * dy) ) then
+            atmKny = 1
+        endif
+
+
+        allocate(distFromCenter(atmKnx, atmKny), &
+                 atmKernel(atmKnx, atmKny), &
+                 kX2D(atmKnx, atmKny), kY2D(atmKnx, atmKny), &
+                 ell_by2(atmKnx, atmKny), weight(atmKnx, atmKny))
+
+        n = -atmKnx/2
+        do i = 1, atmKnx
+            kX2D(i,:) = n * dx
+            n = n + 1
+        enddo
+
+        n = -atmKny/2
+        do j = 1, atmKny
+            kY2D(:,j) = n * dy
+            n = n + 1
+        enddo
+
+        distFromCenter(:,:) = SQRT(kX2D*kX2D + kY2D *kY2D)
+
+        weight(:,:) = 0.5
+        ell_by2(:,:) = filterLength/2
+
+        weight = weight-0.5*tanh((distFromCenter-ell_by2)/10.0) 
+        weight = weight * dArea
+        
+        atmKernel = weight/sum(weight)
+
+        if (thisProc() .EQ. MASTER ) then !MASTER
+            write(*,'(A15,I4,I4)') 'atm kernel size', atmKnx, atmKny
+            ! do dummmy =1, knx
+            !     write(*,'(13F11.5)') kernel(dummmy, :)
+            ! enddo
+            print *, 'sum Kernel=', sum(atmKernel)
+        endif
+        
+        
+    end subroutine
+
+
+    subroutine filterAtmUmixVmix()
+        INTEGER (kind=i4) :: strt_col, ed_col, data_size, row_size, &
+                             i, j, &
+                             nxpo, nypo, &
+                             is, ie, js, je, &
+                             dest, source, &
+                             startCol_tag, &
+                             dataSize_tag, &
+                             OL_UATM_tag,  &
+                             OL_VATM_tag,  &
+                             i_err
+
+
+        REAL(kind = r8), ALLOCATABLE, DIMENSION(:,:) :: UATM, VATM, &
+                                                        diff  !!! this is for testing
+
+        INTEGER(kind = i4) :: ii, jj  !! this is for test
+
+        call setOcnPgridXYsizeto(nxpo, nypo)
+
+        ALLOCATE(UATM(nxpo, nypo), &
+                 VATM(nxpo, nypo)) 
+
+        allocate(inUATM(nxpo + atmKnx-1, nypo+atmKny-1), &
+                 outUATM(nxpo + atmKnx-1, nypo+atmKny-1), &
+                 inVATM(nxpo + atmKnx-1, nypo+atmKny-1), &
+                 outVATM(nxpo + atmKnx-1, nypo+atmKny-1), &
+                 diff(nxpo + atmKnx-1, nypo+atmKny-1))
+
+        allocate(uf_UATM(atmKnx, atmKny), &
+                 uf_VATM(atmKnx, atmKny))
+
+        call getAtmUmixVmix(nxpo, nypo, UATM, VATM)
+
+
+        startCol_tag = 0
+        dataSize_tag = 0
+        OL_UATM_tag = 0
+        OL_VATM_tag = 0
+
+        inUATM(:,:) = 0
+        inVATM(:,:) = 0
+        
+        outUATM(:,:) = -999
+        outVATM(:,:) = -999
+        
+        is = atmKnx/2 +1
+        ie = nxpo + atmKnx/2
+        js = atmKny/2 +1
+        je = nypo + atmKny/2
+
+        inUATM(is:ie, js:je) = UATM(1:nxpo,1:nypo)
+        inVATM(is:ie, js:je) = VATM(1:nxpo,1:nypo)
+        
+        if (thisProc() .NE. MASTER) then       
+            strt_col = get_start_col() +atmKny/2
+            ed_col = get_end_col() +atmKny/2
+
+            row_size = nxpo + atmKnx-1
+            data_size = row_size * (ed_col - strt_col +1)
+            !print *, 'before filtering at point'
+            do j = strt_col, ed_col
+                !write(*,'(A20 I3 I6 A3 I6)') 'atm. flt. at proc.',thisProc(), j-strt_col+1,'of',ed_col-strt_col+1  
+                do i = atmKnx/2 + 1, atmKnx/2 + nxpo
+                    call filterUmixVmixAtPoint(i,j)
+                enddo
+            enddo
+        endif
+
+        call gatherFilteredField(atmKnx/2, atmKny/2, outUATM, inUATM, fieldName = 'UATM')
+        call gatherFilteredField(atmKnx/2, atmKny/2, outVATM, inVATM, fieldName = 'VATM')
+        
+        if (thisProc() .EQ. MASTER) then 
+            is = atmKnx/2 +1
+            ie = nxpo + atmKnx/2
+            js = atmKny/2 +1
+            je = nypo + atmKny/2
+
+            call reset_FilteredAtmMixedLayerVel()
+            
+            call saveAtmFilteredUmixVmix(nxpo, nypo, outUATM(is:ie, js:je), &
+                                  outVATM(is:ie, js:je))
+
+            ! if (thisProc() == MASTER) then
+            !     print *,'after filtering TAUX(500,600)', outTAUX(is -1 + 500, js -1 +600)
+            ! endif
+
+        endif
+
+        call MPI_BARRIER(MPI_COMM_WORLD, i_err)
+
+        DEALLOCATE(inUATM, outUATM, inVATM, outVATM)
+
+        DEALLOCATE(uf_UATM, uf_VATM)
+
+        DEALLOCATE(UATM, VATM) 
+
+        !PRINT *, "\n\n DEALLOCATED"
+
+    end subroutine
+
+
 
     subroutine filterFields()
         INTEGER (kind=i4) :: strt_col, ed_col, data_size, row_size, &
@@ -309,11 +511,17 @@ module filter
         uf_TAUY(:,:) = inTAUY(is:ie,js:je)
         uf_PPA(:,:) = inPPA(is:ie,js:je)
 
-        outUVEL(index_i, index_j) = sum(uf_UVEL* kernel * dArea)/sum(kernel * dArea)
-        outVVEL(index_i, index_j) = sum(uf_VVEL* kernel * dArea)/sum(kernel * dArea)
-        outTAUX(index_i, index_j) = sum(uf_TAUX* kernel * dArea)/sum(kernel * dArea)
-        outTAUY(index_i, index_j) = sum(uf_TAUY* kernel * dArea)/sum(kernel * dArea)
-        outPPA(index_i, index_j) = sum(uf_PPA* kernel * dArea)/sum(kernel * dArea)
+        outUVEL(index_i, index_j) = sum(uf_UVEL* kernel)/sum(kernel)
+        outVVEL(index_i, index_j) = sum(uf_VVEL* kernel)/sum(kernel)
+        outTAUX(index_i, index_j) = sum(uf_TAUX* kernel)/sum(kernel)
+        outTAUY(index_i, index_j) = sum(uf_TAUY* kernel)/sum(kernel)
+        outPPA(index_i, index_j) = sum(uf_PPA* kernel)/sum(kernel)
+
+        ! outUVEL(index_i, index_j) = sum(uf_UVEL* kernel * dArea)/sum(kernel * dArea)
+        ! outVVEL(index_i, index_j) = sum(uf_VVEL* kernel * dArea)/sum(kernel * dArea)
+        ! outTAUX(index_i, index_j) = sum(uf_TAUX* kernel * dArea)/sum(kernel * dArea)
+        ! outTAUY(index_i, index_j) = sum(uf_TAUY* kernel * dArea)/sum(kernel * dArea)
+        ! outPPA(index_i, index_j) = sum(uf_PPA* kernel * dArea)/sum(kernel * dArea)
 
         ! outUVEL(index_i, index_j) = inUVEL(index_i, index_j)
         ! outVVEL(index_i, index_j) = inVVEL(index_i, index_j)
@@ -322,5 +530,28 @@ module filter
         ! outPPA(index_i, index_j) = inPPA(index_i, index_j)
 
     end subroutine
+
+    subroutine filterUmixVmixAtPoint(index_i,index_j)
+        INTEGER(kind=i4), INTENT(IN) :: index_i, index_j
+        
+        INTEGER(kind=i4) :: is, ie, js, je
+
+        is = index_i - atmKnx/2
+        ie = index_i + atmKnx/2
+
+        js = index_j - atmKny/2
+        je = index_j + atmKny/2
+
+        uf_UATM(:,:) = inUATM(is:ie,js:je)
+        uf_VATM(:,:) = inVATM(is:ie,js:je)
+        
+        ! outUATM(index_i, index_j) = sum(uf_UATM* atmKernel * dArea)/sum(atmKernel * dArea)
+        ! outVATM(index_i, index_j) = sum(uf_VATM* atmKernel * dArea)/sum(atmKernel * dArea)
+        
+        outUATM(index_i, index_j) = sum(uf_UATM* atmKernel)/sum(atmKernel)
+        outVATM(index_i, index_j) = sum(uf_VATM* atmKernel)/sum(atmKernel)
+
+    end subroutine
+
 
 end module filter
